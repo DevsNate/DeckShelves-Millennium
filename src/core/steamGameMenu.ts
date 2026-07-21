@@ -2,15 +2,6 @@ import { showContextMenu, findModuleChild, findModuleByExport, fakeRenderCompone
 import { getPreferredSteamDocument, getPreferredSteamWindow, getAllSteamDocuments } from "../runtime/steamHost";
 import { isSteamOS38OrLater } from "./steamOSVersion";
 import i18n from "../i18n";
-import { getCurrentSettings, saveSettings } from "../store/settingsStore";
-import {
-  toggleShelfHiddenById,
-  moveShelfById,
-  duplicateShelfById,
-  setShelfCollapsed,
-  dispatchShelfModal,
-  clearOnlineShelfCache,
-} from "./shelfActions";
 import {
   buildDeckShelvesMenuItems as buildDeckShelvesMenuItemsBase,
   buildShelfContextMenu,
@@ -27,6 +18,10 @@ function buildDeckShelvesMenuItems(shelfId: string, dfl: any, R: any, appid?: nu
   return buildDeckShelvesMenuItemsBase(shelfId, dfl, R, appid, _activeAppIdForMenu, _activeCardIndexForMenu);
 }
 
+/* Only a SteamOS build confirmed older than 3.8 uses the legacy menu flow.
+   Unknown / non-SteamOS hosts (Windows, macOS, desktop-Linux Steam —
+   getSteamOSVersion() is null there, so isSteamOS38OrLater() is null, not false)
+   fall through to the MODERN flow, which is correct for every current client. */
 function isLegacyMenuFlow(): boolean {
   return isSteamOS38OrLater() === false;
 }
@@ -1131,10 +1126,6 @@ function pushIfAvailable(items: any[], R: any, MenuItem: any, key: string, label
 export function browseScreenshotsForApp(appid: number): boolean {
   if (!Number.isFinite(appid) || appid <= 0) return false;
   const url = `steam://open/screenshots/${appid}`;
-  // Current SteamUI opens client dialogs by navigating the owning BP window
-  // to a parameterised steam:// URL. This keeps the action in the same
-  // BrowserWindow as the context menu and works on Windows where the older
-  // Apps.BrowseScreenshotsForApp bridge can exist but silently no-op.
   try {
     const owner = getPreferredSteamWindow() as any;
     if (owner?.location) {
@@ -1142,8 +1133,6 @@ export function browseScreenshotsForApp(appid: number): boolean {
       return true;
     }
   } catch {}
-  // Compatibility fallbacks for Steam builds that still expose an explicit
-  // protocol or Apps bridge.
   const sc: any = (globalThis as any).SteamClient;
   try {
     if (typeof sc?.Browser?.OpenSteamURL === "function") {
@@ -1286,12 +1275,9 @@ export function showGameMenu(appid: number, shelfId?: string): void {
   if (showGameMenuActive) return;
   showGameMenuActive = true;
   try {
-    /* A captured Steam application-menu component closes through router state
-       owned by its original native card. Millennium renders Deck Shelves from
-       a global home injection, so that owner is absent and dismissing the
-       captured menu throws while reading `owner.state`. Use the explicit menu
-       assembled from the same supported actions on Millennium; it owns its
-       lifecycle and closes without depending on native-card state. */
+    /* Captured Steam menus depend on a native card owner that Millennium's
+       global home injection does not have. Use the self-owned fallback menu
+       on Millennium so dismissal cannot dereference a missing owner. */
     if ((globalThis as any).__DECK_SHELVES_MILLENNIUM__) {
       showDflFallbackMenu(appid, shelfId);
       return;

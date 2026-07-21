@@ -50,6 +50,11 @@ local DEFAULT_SETTINGS = {
     smartShelves = json.array(),
     smartSurpriseMe = false,
     smartSurpriseMeCount = 0,
+    profileTriggersEnabled = false,
+    autoCollapseEnabled = false,
+    notificationsDisabled = false,
+    notificationsDisabledAreas = json.array(),
+    showcaseSeen = false,
 }
 
 local function read_file(path)
@@ -110,6 +115,17 @@ local function decode(body)
     return ok and value or nil
 end
 
+local function run_powershell_json(script)
+    local temp_dir = utils.getenv("TEMP") or utils.getenv("TMP") or PLUGIN_DIR
+    local script_path = fs.join(temp_dir, "deck-shelves-" .. utils.uuid() .. ".ps1")
+    if not write_file(script_path, script) then return nil end
+    local command = 'powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "' .. script_path .. '"'
+    local ok, output, status = pcall(utils.exec, command)
+    os.remove(script_path)
+    if not ok or status ~= 0 or not output then return nil end
+    return decode(trim(output))
+end
+
 local function clone(value)
     return decode(json.encode(value))
 end
@@ -136,7 +152,7 @@ local function encode_settings(value)
     for _, key in ipairs({
         "shelves", "smartShelves", "savedFilters", "savedSmartFilters",
         "qamHiddenToggles", "qamHiddenSections", "allShelvesOrder", "profiles",
-        "buttonBindingsDisabled", "backups",
+        "buttonBindingsDisabled", "notificationsDisabledAreas", "backups",
     }) do
         body = body:gsub('"' .. key .. '":{}', '"' .. key .. '":[]')
     end
@@ -207,15 +223,29 @@ local function list_backup_entries()
     return result
 end
 
-local function prune_auto_backups()
-    local names = {}
+local function prune_backups()
+    local now = os.time()
+    local entries = {}
     for _, entry in ipairs(fs.list(BACKUPS_DIR) or {}) do
         local name = tostring(entry.name or "")
-        if not entry.is_directory and is_auto_backup(name) then names[#names + 1] = name end
+        if not entry.is_directory and safe_backup_name(name) then
+            local path = tostring(entry.path or (BACKUPS_DIR .. "\\" .. name))
+            local ok, value = pcall(fs.last_write_time, path)
+            local mtime = ok and tonumber(value) or 0
+            if is_auto_backup(name) and mtime > 0 and (now - mtime) > (7 * 86400) then
+                os.remove(path)
+            else
+                entries[#entries + 1] = { name = name, path = path, mtime = mtime, auto = is_auto_backup(name) }
+            end
+        end
     end
-    table.sort(names)
-    while #names > 12 do
-        os.remove(BACKUPS_DIR .. "\\" .. table.remove(names, 1))
+    table.sort(entries, function(a, b)
+        if a.auto ~= b.auto then return a.auto end
+        return a.mtime < b.mtime
+    end)
+    while #entries > 10 do
+        local entry = table.remove(entries, 1)
+        os.remove(entry.path)
     end
 end
 
@@ -249,7 +279,7 @@ local function create_backup_file(tag, throttle_seconds)
         dest = BACKUPS_DIR .. "\\" .. name
     end
     local ok = copy_file(SETTINGS_FILE, dest)
-    if ok and not tag then prune_auto_backups() end
+    if ok then prune_backups() end
     return ok, name
 end
 
@@ -390,6 +420,7 @@ function import_backup(src_path)
     fs.create_directories(BACKUPS_DIR)
     local name = "settings-" .. os.date("%Y%m%d-%H%M%S") .. "-import.json"
     local ok = write_file(BACKUPS_DIR .. "\\" .. name, document)
+    if ok then prune_backups() end
     return encode_settings({ ok = ok, backups = list_backup_entries() })
 end
 
@@ -443,8 +474,95 @@ function read_image_b64(path)
     return json.encode({ ok = true, dataUrl = "data:" .. mime .. ";base64," .. encoded })
 end
 
+function get_css_loader_themes()
+    local decky_home = trim(utils.getenv("DECKY_HOME") or "")
+    local root = decky_home ~= "" and fs.join(decky_home, "themes") or fs.join(USER_HOME, "homebrew", "themes")
+    local active = json.array()
+    local installed = 0
+    for _, entry in ipairs(fs.list(root) or {}) do
+        local folder = tostring(entry.name or "")
+        if entry.is_directory and not folder:match("%.profile$") then
+            installed = installed + 1
+            local config = decode(read_file(fs.join(entry.path or fs.join(root, folder), "config_USER.json")))
+            if type(config) == "table" and config.active == true then
+                local theme = decode(read_file(fs.join(entry.path or fs.join(root, folder), "theme.json")))
+                local name = type(theme) == "table" and trim(theme.name) or ""
+                active[#active + 1] = name ~= "" and name:sub(1, 80) or folder:sub(1, 80)
+            end
+        end
+    end
+    table.sort(active, function(a, b) return a:lower() < b:lower() end)
+    return json.encode({ active = active, installed = installed })
+end
+
+function get_display_state()
+    local result = run_powershell_json([[
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Windows.Forms
+$count = [System.Windows.Forms.Screen]::AllScreens.Count
+[pscustomobject]@{ external = ($count -gt 1); supported = ($count -gt 0) } | ConvertTo-Json -Compress
+]])
+    if type(result) ~= "table" then result = { external = false, supported = false } end
+    return json.encode(result)
+end
+
+function get_host_os()
+    local result = run_powershell_json([[
+$ErrorActionPreference = 'Stop'
+$os = Get-CimInstance Win32_OperatingSystem
+[pscustomobject]@{
+  system = 'Windows'; name = 'Windows'; distroId = $null
+  prettyName = [string]$os.Caption; version = [string]$os.Version
+  machine = [string]$env:PROCESSOR_ARCHITECTURE; isSteamOS = $false
+  steamosVersion = $null; supported = $true
+} | ConvertTo-Json -Compress
+]])
+    if type(result) ~= "table" then
+        result = { system = "Windows", name = "Windows", prettyName = "Windows", machine = utils.getenv("PROCESSOR_ARCHITECTURE"), isSteamOS = false, supported = true }
+    end
+    return json.encode(result)
+end
+
+function get_perf_snapshot()
+    local result = run_powershell_json([[
+$ErrorActionPreference = 'Stop'
+$cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
+$os = Get-CimInstance Win32_OperatingSystem
+$mem = if ([double]$os.TotalVisibleMemorySize -gt 0) { [math]::Round(100.0 * [double]$os.FreePhysicalMemory / [double]$os.TotalVisibleMemorySize, 1) } else { $null }
+[pscustomobject]@{
+  cpuPercent = if ($null -eq $cpu) { $null } else { [math]::Round([double]$cpu, 1) }
+  memAvailablePercent = $mem
+  supported = ($null -ne $cpu -or $null -ne $mem)
+} | ConvertTo-Json -Compress
+]])
+    if type(result) ~= "table" then result = { cpuPercent = nil, memAvailablePercent = nil, supported = false } end
+    return json.encode(result)
+end
+
+-- Upstream's peripheral adapters use Linux bluetoothctl/wpctl. Windows has no
+-- equivalent reliable connection-state API in the Millennium Lua runtime, so
+-- these signals remain explicitly unsupported and therefore fail open.
+function get_bluetooth_state()
+    return json.encode({ paired = json.array(), connected = json.array(), supported = false })
+end
+
+function get_audio_state()
+    return json.encode({ headphones = false, supported = false })
+end
+
 function get_user_home()
     return USER_HOME
+end
+
+function get_user_pictures()
+    local candidates = {
+        fs.join(USER_HOME, "Pictures"),
+        fs.join(USER_HOME, "OneDrive", "Pictures"),
+    }
+    for _, path in ipairs(candidates) do
+        if fs.exists(path) then return path end
+    end
+    return candidates[1]
 end
 
 function get_user_desktop()
@@ -659,7 +777,7 @@ function get_wishlist(community_url)
     local url = "https://api.steampowered.com/IWishlistService/GetWishlist/v1/?steamid=" .. steam_id64
     local response, err = http.get(url, {
         headers = { ["Accept"] = "application/json" }, timeout = 15,
-        user_agent = "Deck-Shelves-Millennium/3.0.2", follow_redirects = true, verify_ssl = true,
+        user_agent = "Deck-Shelves-Millennium/3.1.0", follow_redirects = true, verify_ssl = true,
     })
     if not response then return json.encode({ ok = false, error = tostring(err or "request failed") }) end
     local data = decode(response.body)

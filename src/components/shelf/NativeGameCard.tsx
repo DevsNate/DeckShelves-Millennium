@@ -3,7 +3,7 @@ import type { DeckRowItem } from "./types";
 import { getPreferredSteamDocument } from "../../runtime/steamHost";
 import { getCurrentSettings, saveSettings } from "../../store/settingsStore";
 import { patchShelfInSettings } from "../../domain/settings";
-import { BTN, createMatcherState, matchEvent, parseRawCombo, resolveBindings } from "../../runtime/buttonBindings";
+import { createMatcherState, matchEvent, parseRawCombo, resolveBindings } from "../../runtime/buttonBindings";
 import { subscribeControllerInput } from "../../runtime/controllerInput";
 import { getRuntimeClassMap } from "../../core/webpackCompat";
 

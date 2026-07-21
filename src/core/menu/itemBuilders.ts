@@ -152,7 +152,7 @@ function runRefreshAction(ctx: Ctx): void {
 }
 
 function buildMgmt(ctx: Ctx, mk: Mk): any[] {
-  const { shelfId, isSmart, idx, listLen, isCollapsed, isHidden, isRandomOrSmart, isOnline } = ctx;
+  const { shelfId, idx, listLen, isCollapsed, isHidden, isRandomOrSmart, isOnline } = ctx;
   const { item } = mk;
   const refreshLabel = isOnline ? tLabel("refresh_cache", "Refresh cache") : tLabel("refresh", "Refresh");
   return [
@@ -270,7 +270,7 @@ function buildCardActions(ctx: Ctx, mk: Mk): any[] {
   return [highlightActionFor(ctx, mk), hideActionFor(ctx, mk), ...buildAddRemoveGroups(ctx, mk)];
 }
 
-function buildMk(dfl: any, R: any, focusedAppId: number, shelfId: string): Mk {
+function buildMk(dfl: any, R: any, _focusedAppId: number, _shelfId: string): Mk {
   const item = (key: string, label: string, onSelected: () => void, disabled?: boolean) =>
     R.createElement(dfl.MenuItem, { key, onSelected, disabled }, label);
   const group = (key: string, label: string, ...children: any[]) =>

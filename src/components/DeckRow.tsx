@@ -2,8 +2,8 @@ import { memo, useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { mark, measure } from "../core/perf";
 import { computeCenteredScrollLeft } from "../core/scrollUtils";
 import { Focusable } from "../runtime/host/decky";
-import { getPreferredSteamDocument } from "../runtime/steamHost";
-import { getRuntimeClassMap } from "../core/webpackCompat";
+import { getPreferredSteamDocument, getAllSteamDocuments } from "../runtime/steamHost";
+import { buildSelectorFromToken, getRuntimeClassMap } from "../core/webpackCompat";
 import { logInfo } from "../runtime/logger";
 import { focusElement } from "../core/focusRestore";
 import {
@@ -32,6 +32,20 @@ import { trackFeature } from "../steam/usageTracking";
 import { patchShelfInSettings } from "../domain/settings";
 import { PerShelfHero } from "./shelf/PerShelfHero";
 import { NativeShelfCarousel, useNativeCarouselResolution } from "./shelf/NativeShelfCarousel";
+
+function isScrollableEl(el: HTMLElement): boolean {
+  try {
+    const oy = (getComputedStyle(el).overflowY || '').toLowerCase();
+    return (oy === 'auto' || oy === 'scroll' || oy === 'overlay') && el.scrollHeight > el.clientHeight;
+  } catch (e) {
+    logInfo("HOME", "isScrollableEl: getComputedStyle failed", String(e));
+    return false;
+  }
+}
+
+function smoothScrollTo(el: HTMLElement, top: number): void {
+  try { el.scrollTo({ top, behavior: "smooth" }); } catch { el.scrollTop = top; }
+}
 
 function readCollapsed(shelfId: string): boolean {
   try { return localStorage.getItem(`ds-collapsed-${shelfId}`) === '1'; } catch (e) { logInfo("HOME", "readCollapsed failed", String(e)); return false; }
@@ -64,7 +78,7 @@ export function _labelOverhangPx(args: {
   return nativeBottom + description;
 }
 
-function DeckRowImpl({ title, items, shelfId, removableSet, matchNativeSize = false, highlightFirst = false, highlightAll = false, highlightedAppIds, hideStatusLine = false, hideNewBadge = false, hideDiscountBadge = false, hideCompatIcons = false, hideNonSteamBadge = false, hideShelfTitle = false, hideGameNames = false, hideInstallIndicator = false, enableLogo = false, enableIcon = false, enableDescription = false, descriptionBelowLogo = false, logoBelowShelf = false, logoPosition = 'left', descriptionPosition = 'left', logoSize = 100, logoTopOffset = 20, iconVerticalAlign = 'top', shelfTitlePosition = 'left', gameNamePosition = 'left', playtimePosition = 'left', descriptionHeight = 2, descriptionLogoGap = 10, descriptionScale = 1, forceExpanded = false, fullPageLayoutOnly = false, pinScrollTop = false, forceLayoutAsRecents = false, heroEnabled = false, heroLabelMount = false, infoAbove = false, friendsOverlay = false, friendsOverlayRecent = false }: { title?: string; items: DeckRowItem[]; shelfId?: string; removableSet?: Set<number>; matchNativeSize?: boolean; highlightFirst?: boolean; highlightAll?: boolean; highlightedAppIds?: number[]; hideStatusLine?: boolean; hideNewBadge?: boolean; hideDiscountBadge?: boolean; hideCompatIcons?: boolean; hideNonSteamBadge?: boolean; hideShelfTitle?: boolean; hideGameNames?: boolean; hideInstallIndicator?: boolean; enableLogo?: boolean; enableIcon?: boolean; enableDescription?: boolean; descriptionBelowLogo?: boolean; logoBelowShelf?: boolean; logoPosition?: 'left' | 'center' | 'right'; descriptionPosition?: 'left' | 'center' | 'right'; logoSize?: number; logoTopOffset?: number; iconVerticalAlign?: 'top' | 'center' | 'bottom'; shelfTitlePosition?: 'left' | 'center' | 'right'; gameNamePosition?: 'left' | 'center' | 'right'; playtimePosition?: 'left' | 'center' | 'right'; descriptionHeight?: number; descriptionLogoGap?: number; descriptionScale?: number; forceExpanded?: boolean; fullPageLayoutOnly?: boolean; pinScrollTop?: boolean; forceLayoutAsRecents?: boolean; heroEnabled?: boolean; heroLabelMount?: boolean; infoAbove?: boolean; friendsOverlay?: boolean; friendsOverlayRecent?: boolean }) {
+function DeckRowImpl({ title, items, shelfId, removableSet, matchNativeSize = false, highlightFirst = false, highlightAll = false, highlightedAppIds, hideStatusLine = false, hideNewBadge = false, hideDiscountBadge = false, hideCompatIcons = false, hideNonSteamBadge = false, hideShelfTitle = false, hideGameNames = false, hideInstallIndicator = false, enableLogo = false, enableIcon = false, enableDescription = false, descriptionBelowLogo = false, logoBelowShelf = false, logoPosition = 'left', descriptionPosition = 'left', logoSize = 100, logoTopOffset = 20, iconVerticalAlign = 'top', shelfTitlePosition = 'left', gameNamePosition = 'left', playtimePosition = 'left', descriptionHeight = 2, descriptionLogoGap = 10, descriptionScale = 1, forceExpanded = false, fullPageLayoutOnly = false, pinScrollTop = false, forceLayoutAsRecents = false, heroEnabled = false, heroLabelMount = false, infoAbove = false, friendsOverlay = false, friendsOverlayRecent = false, forceCollapsed = false, autoCollapseWhenEmpty = false }: { title?: string; items: DeckRowItem[]; shelfId?: string; removableSet?: Set<number>; matchNativeSize?: boolean; highlightFirst?: boolean; highlightAll?: boolean; highlightedAppIds?: number[]; hideStatusLine?: boolean; hideNewBadge?: boolean; hideDiscountBadge?: boolean; hideCompatIcons?: boolean; hideNonSteamBadge?: boolean; hideShelfTitle?: boolean; hideGameNames?: boolean; hideInstallIndicator?: boolean; enableLogo?: boolean; enableIcon?: boolean; enableDescription?: boolean; descriptionBelowLogo?: boolean; logoBelowShelf?: boolean; logoPosition?: 'left' | 'center' | 'right'; descriptionPosition?: 'left' | 'center' | 'right'; logoSize?: number; logoTopOffset?: number; iconVerticalAlign?: 'top' | 'center' | 'bottom'; shelfTitlePosition?: 'left' | 'center' | 'right'; gameNamePosition?: 'left' | 'center' | 'right'; playtimePosition?: 'left' | 'center' | 'right'; descriptionHeight?: number; descriptionLogoGap?: number; descriptionScale?: number; forceExpanded?: boolean; fullPageLayoutOnly?: boolean; pinScrollTop?: boolean; forceLayoutAsRecents?: boolean; heroEnabled?: boolean; heroLabelMount?: boolean; infoAbove?: boolean; friendsOverlay?: boolean; friendsOverlayRecent?: boolean; forceCollapsed?: boolean; autoCollapseWhenEmpty?: boolean }) {
   const visuallyForced = forceExpanded || forceLayoutAsRecents;
   /* 100vh layout fires for BOTH real recents-replacement (`forceExpanded`)
      and per-shelf full-page intent (`fullPageLayoutOnly`). Only the real
@@ -134,7 +148,11 @@ function DeckRowImpl({ title, items, shelfId, removableSet, matchNativeSize = fa
      it should return to whatever state the user had chosen. We intentionally
      do NOT overwrite `collapsedState` or the persisted `ds-collapsed-{id}`
      key while `forceExpanded` is active. */
-  const collapsed = visuallyForced ? false : collapsedState;
+  // Auto-collapse forces the collapsed render (off-context predicate matched, or
+  // the shelf is empty) on top of the manual `collapsedState`; a promoted/recents
+  // shelf (visuallyForced) is never auto-collapsed.
+  const autoCollapsed = forceCollapsed || (autoCollapseWhenEmpty && items.length === 0);
+  const collapsed = visuallyForced ? false : (collapsedState || autoCollapsed);
   const [nativeRowClass, setNativeRowClass] = useState('');
   const nativeCarouselResolution = useNativeCarouselResolution();
   const nativeCarouselActiveRef = useRef(false);
@@ -323,6 +341,296 @@ function DeckRowImpl({ title, items, shelfId, removableSet, matchNativeSize = fa
 
   
 
+  /* Scroll-pin-to-top only fires when this shelf is genuinely replacing
+     the native recents slot (`pinScrollTop`) — NOT when the user opts
+     into `fullPageShelf` for visual reasons. Otherwise the shelf traps
+     the viewport at top 0 and the user can't scroll to siblings. */
+  const pinScrollTopRef = useRef(pinScrollTop);
+  useEffect(() => { pinScrollTopRef.current = pinScrollTop; }, [pinScrollTop]);
+
+  useEffect(() => {
+    if (isMillenniumNavigationRuntime()) return;
+    const el = outerRef.current;
+    if (!el) return;
+    const CENTER_TOLERANCE_PX = 32; // don't fight Steam when it's already close
+    let scheduled: number | null = null;
+    let lastScrollable: HTMLElement | null = null;
+    let lastTarget = -1;
+    const findScrollableAncestor = (node: HTMLElement | null): HTMLElement | null => {
+      let cur = node?.parentElement ?? null;
+      while (cur && cur !== cur.ownerDocument?.body) {
+        try {
+          const cs = getComputedStyle(cur);
+          const oy = (cs.overflowY || "").toLowerCase();
+          if ((oy === "auto" || oy === "scroll" || oy === "overlay") && cur.scrollHeight > cur.clientHeight) return cur;
+        } catch { /* skip */ }
+        cur = cur.parentElement;
+      }
+      return null;
+    };
+    /* Center `el` in its scrollable ancestor — one smooth scroll per focus, only
+       when needed (skip if Steam's native scroll already centered it, to avoid
+       competing scrolls that stutter). Exception: when promoted to the recents
+       slot (`forceExpanded`), pin scrollTop=0 so the header isn't clipped by
+       prior content (hero / hidden-recents spacer). */
+    const maybeCenter = () => {
+      try {
+        const scr = findScrollableAncestor(el);
+        if (!scr) { el.scrollIntoView({ block: "center", behavior: "smooth" }); return; }
+        const elRect = el.getBoundingClientRect();
+        const scrRect = scr.getBoundingClientRect();
+        if (pinScrollTopRef.current) {
+          if (scr === lastScrollable && lastTarget === 0) return;
+          lastScrollable = scr;
+          lastTarget = 0;
+          smoothScrollTo(scr, 0);
+          return;
+        }
+        const currentCenterOffset = (elRect.top + elRect.height / 2) - (scrRect.top + scrRect.height / 2);
+        if (Math.abs(currentCenterOffset) <= CENTER_TOLERANCE_PX) return;
+        const delta = elRect.top - scrRect.top;
+        const target = Math.round(scr.scrollTop + delta - (scr.clientHeight - elRect.height) / 2);
+        const clamped = Math.max(0, Math.min(scr.scrollHeight - scr.clientHeight, target));
+        // Coalesce: ignore redundant scroll commands to the same target on the
+        // same scrollable — Steam may re-fire focusin during smooth scroll.
+        if (scr === lastScrollable && Math.abs(clamped - lastTarget) < 2) return;
+        lastScrollable = scr;
+        lastTarget = clamped;
+        smoothScrollTo(scr, clamped);
+      } catch { /* ignore */ }
+    };
+    let verifyTimer: number | null = null;
+    const onFocusIn = () => {
+      if (scheduled === null) {
+        scheduled = requestAnimationFrame(() => {
+          scheduled = null;
+          maybeCenter();
+        });
+      }
+      /* Verification pass after 300ms: covers the recently-expanded-shelf
+         case where the first scroll reads mid-animation layout or Steam's
+         native scroll competes with ours. Self-skips via the tolerance
+         check inside maybeCenter when the shelf is already centered. */
+      if (verifyTimer) clearTimeout(verifyTimer);
+      verifyTimer = window.setTimeout(() => {
+        verifyTimer = null;
+        // Reset the dedup target so the verification pass can re-issue the
+        // same scroll if it's genuinely needed again.
+        lastTarget = -1;
+        maybeCenter();
+      }, 300);
+    };
+    el.addEventListener("focusin", onFocusIn);
+    return () => {
+      el.removeEventListener("focusin", onFocusIn);
+      if (scheduled !== null) cancelAnimationFrame(scheduled);
+      if (verifyTimer) clearTimeout(verifyTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isMillenniumNavigationRuntime()) return;
+    const rowEl = rowRef.current;
+    if (!rowEl) return;
+    const throttleRows: Set<HTMLElement> = ((globalThis as any).__ds_scroll_throttle_rows ??= new Set());
+
+    let rafPending: number | null = null;
+    let throttleTimer: any = null;
+
+    const doHorizontalScroll = (card: HTMLElement) => {
+      const final = computeCenteredScrollLeft(
+        { width: rowEl.clientWidth, scrollWidth: rowEl.scrollWidth },
+        { left: card.offsetLeft, top: card.offsetTop, width: card.offsetWidth, height: card.offsetHeight }
+      );
+      rowEl.scrollTo({ left: final, behavior: 'instant' });
+      throttleRows.add(rowEl);
+      if (throttleTimer) clearTimeout(throttleTimer);
+      throttleTimer = setTimeout(() => {
+        throttleRows.delete(rowEl);
+        throttleTimer = null;
+        if (lastFocusedCard && lastFocusedCard !== card) {
+          doHorizontalScroll(lastFocusedCard);
+        }
+      }, 150);
+    };
+
+    let lastFocusedCard: HTMLElement | null = null;
+    const handleFocusedCard = (card: HTMLElement | null) => {
+      if (!card) return;
+      lastFocusedCard = card;
+      if (throttleRows.has(rowEl)) return;
+      try {
+        const allCards = Array.from(rowEl.querySelectorAll<HTMLElement>('.ds-card'));
+        for (const it of allCards) {
+          it.classList.toggle('is-selected', it === card);
+        }
+      } catch (e) {
+        logInfo("HOME", "is-selected toggle failed", String(e));
+      }
+      try {
+        const nested = Array.from(rowEl.querySelectorAll<HTMLElement>('.gpfocus'));
+        for (const n of nested) {
+          if (n !== card && n.classList) n.classList.remove('gpfocus');
+        }
+      } catch (e) {
+        logInfo("HOME", "gpfocus cleanup failed", String(e));
+      }
+      /* Lateral card-to-card move within the same shelf → skip the vertical
+         re-centering below (the shelf is already positioned). Only re-center
+         when focus ENTERS this shelf from another row. Re-centering on every
+         lateral focus (this block has no tolerance, unlike maybeCenter) made
+         the whole shelf — hero art included — bob ~6px per card. */
+      const prevCard: HTMLElement | null = (globalThis as any).__ds_prev_centered_card ?? null;
+      (globalThis as any).__ds_prev_centered_card = card;
+      if (prevCard && prevCard !== card && rowEl.contains(prevCard)) {
+        doHorizontalScroll(card);
+        return;
+      }
+      try {
+        const outer = outerRef.current;
+        if (outer) requestAnimationFrame(() => {
+          if (pinScrollTopRef.current) return;
+          outer.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        });
+      } catch (e) {
+        logInfo("HOME", "scrollIntoView failed", String(e));
+      }
+      // Vertical fallback A: walk DOM for scrollable ancestor and scroll manually.
+      try {
+        function getScrollableAncestor(node: HTMLElement | null): HTMLElement | null {
+          let cur = node?.parentElement ?? null;
+          while (cur && cur !== document.body) {
+            if (isScrollableEl(cur)) return cur;
+            cur = cur.parentElement;
+          }
+          return null;
+        }
+        const anc = getScrollableAncestor(rowEl);
+        if (anc) {
+          const outerEl = outerRef.current;
+          if (outerEl) {
+            if (pinScrollTopRef.current) {
+              try { anc.scrollTo({ top: 0, behavior: 'smooth' }); } catch { anc.scrollTop = 0; }
+            } else {
+              const outerRect = outerEl.getBoundingClientRect();
+              const ancRect = anc.getBoundingClientRect();
+              const delta = outerRect.top - ancRect.top;
+              const target = anc.scrollTop + delta - (anc.clientHeight / 2) + (outerRect.height / 2);
+              const maxScroll = Math.max(0, anc.scrollHeight - anc.clientHeight);
+              const finalTop = Math.max(0, Math.min(target, maxScroll));
+              try { anc.scrollTo({ top: finalTop, behavior: 'smooth' }); } catch { anc.scrollTop = finalTop; }
+            }
+          }
+        }
+      } catch (e) {
+        logInfo("HOME", "vertical scroll fallback A failed", String(e));
+      }
+      // Vertical fallback B: Steam's home uses a separate BrowserWindow document.
+      try {
+        const spDoc = getPreferredSteamDocument();
+        if (spDoc && spDoc !== document) {
+          const candidates = Array.from(spDoc.querySelectorAll<HTMLElement>('[class]'));
+          let viewport: HTMLElement | null = null;
+          const map = (() => { try { return getRuntimeClassMap(spDoc); } catch { return null; } })();
+          if (map?.viewport) {
+            const sel = buildSelectorFromToken(map.viewport);
+            if (sel) try { viewport = spDoc.querySelector(sel); } catch (e) { logInfo("HOME", "viewport selector failed", String(e)); }
+          }
+          if (!viewport) {
+            for (const el of candidates) {
+              try {
+                const cs = getComputedStyle(el);
+                const oy = (cs.overflowY || '').toLowerCase();
+                if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') && el.scrollHeight > el.clientHeight && el.clientHeight > 80) { viewport = el; break; }
+              } catch (e) {
+                logInfo("HOME", "viewport scan: getComputedStyle failed", String(e));
+              }
+            }
+          }
+          if (viewport) {
+            const outerEl = outerRef.current;
+            if (outerEl) {
+              if (pinScrollTopRef.current) {
+                try { viewport.scrollTo({ top: 0, behavior: 'smooth' }); } catch { viewport.scrollTop = 0; }
+              } else {
+                const outerRect = outerEl.getBoundingClientRect();
+                const vpRect = viewport.getBoundingClientRect();
+                const delta = outerRect.top - vpRect.top;
+                const target = viewport.scrollTop + delta - (viewport.clientHeight / 2) + (outerRect.height / 2);
+                const max = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+                const finalTop = Math.max(0, Math.min(target, max));
+                try { viewport.scrollTo({ top: finalTop, behavior: 'smooth' }); } catch { viewport.scrollTop = finalTop; }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        logInfo("HOME", "vertical scroll fallback B failed", String(e));
+      }
+      doHorizontalScroll(card);
+    };
+
+    const observer = new MutationObserver((mutations) => {
+      let detected: HTMLElement | null = null;
+      for (const m of mutations) {
+        const el = m.target as HTMLElement;
+        if (el.classList?.contains('gpfocus') && el.classList?.contains('ds-card')) {
+          detected = el;
+          break;
+        }
+      }
+      if (!detected) return;
+      const c = detected;
+      // GLOBAL sync cleanup — remove gpfocus from all DS cards in all known
+      // Steam documents EXCEPT the one we just observed gaining it. Each
+      /* DeckRow's MutationObserver only watches its own row, so without this
+         cross-row pass, gpfocus from a card in a previously-visited shelf
+         persists and `findFocusedDsCard` (queries .ds-card.gpfocus across
+         documents) returns the wrong card in DOM order. Synchronous so the
+         OPTIONS-button intercept sees a single focused card immediately. */
+      try {
+        for (const doc of getAllSteamDocuments()) {
+          const all = doc.querySelectorAll<HTMLElement>('.ds-card.gpfocus');
+          for (const it of all) { if (it !== c) it.classList.remove('gpfocus'); }
+        }
+      } catch {}
+      if (rafPending !== null) return;
+      rafPending = requestAnimationFrame(() => {
+        rafPending = null;
+        /* Skip the scroll-to-center when the gpfocus was transient. On a Steam
+           restart the nav tree is rebuilt and gpfocus flickers across cards
+           (including late-resolving online shelves) before settling — without
+           this guard a brief gpfocus on an online card scrolls the viewport to
+           center that shelf even though real focus ends up elsewhere. */
+        if (!c.classList.contains('gpfocus') && c !== c.ownerDocument?.activeElement) return;
+        handleFocusedCard(c);
+      });
+    });
+
+    const onCardFocus = (e: FocusEvent) => {
+      const card = (e.target as HTMLElement)?.closest?.('.ds-card') as HTMLElement | null;
+      if (card) {
+        (globalThis as any).__ds_last_focused_card = card;
+        if (rafPending !== null) { cancelAnimationFrame(rafPending); rafPending = null; }
+        rafPending = requestAnimationFrame(() => {
+          rafPending = null;
+          if (!card.classList.contains('gpfocus') && card !== card.ownerDocument?.activeElement) return;
+          handleFocusedCard(card);
+        });
+      }
+    };
+
+    observer.observe(rowEl, { subtree: true, attributes: true, attributeFilter: ['class'] });
+
+    rowEl.addEventListener("focusin", onCardFocus);
+    return () => {
+      rowEl.removeEventListener("focusin", onCardFocus);
+      observer.disconnect();
+      if (rafPending !== null) { cancelAnimationFrame(rafPending); rafPending = null; }
+      if (throttleTimer !== null) { clearTimeout(throttleTimer); throttleTimer = null; }
+      throttleRows.delete(rowEl);
+    };
+  }, []);
   const toggleCollapse = () => {
     if (visuallyForced) return;
     const next = !collapsed;
@@ -331,14 +639,13 @@ function DeckRowImpl({ title, items, shelfId, removableSet, matchNativeSize = fa
     setCollapsed(next);
     if (shelfId) writeCollapsed(shelfId, next);
     if (!focusedInside) return;
+    const findCollapseTarget = (): HTMLElement | null => {
+      if (!next) return rowRef.current?.querySelector<HTMLElement>('.ds-card') ?? null;
+      const all = Array.from(shelf?.ownerDocument?.querySelectorAll<HTMLElement>('.ds-shelf .ds-card') ?? []);
+      return all.find((el) => !shelf?.contains(el)) ?? null;
+    };
     const tryFocus = (attempt: number) => {
-      let target: HTMLElement | null = null;
-      if (!next) {
-        target = rowRef.current?.querySelector<HTMLElement>('.ds-card') ?? null;
-      } else {
-        const all = Array.from(shelf?.ownerDocument?.querySelectorAll<HTMLElement>('.ds-shelf .ds-card') ?? []);
-        target = all.find((el) => !shelf?.contains(el)) ?? null;
-      }
+      const target = findCollapseTarget();
       if (target && focusElement(target)) return;
       if (attempt < 20) setTimeout(() => tryFocus(attempt + 1), 50);
     };

@@ -2,7 +2,7 @@
 
 This inventory covers the user-facing configuration schema, callable backend
 RPC surface, and public `window.deckShelves.api` extension surface from Deck
-Shelves 3.0.2. Private implementation helpers are not separate compatibility
+Shelves 3.1.0. Private implementation helpers are not separate compatibility
 contracts. Status is tracked against the Millennium port.
 
 ## Explicitly excluded
@@ -19,7 +19,9 @@ contracts. Status is tracked against the Millennium port.
   `delete_backup`, `clear_backups`, `import_backup`
 - Portable settings: `export_settings`, `import_settings`
 - Files and paths: `get_user_home`, `get_user_desktop`, `write_json_file`,
-  `read_json_file`, `read_image_b64`
+  `get_user_pictures`, `read_json_file`, `read_image_b64`
+- Host/context: `get_host_os`, `get_display_state`, `get_perf_snapshot`,
+  `get_bluetooth_state`, `get_audio_state`, `get_css_loader_themes`
 - Launcher sources: `list_available_launchers`, `list_launcher_games`
 - Online source: `get_wishlist`
 - Excluded: `get_tabmaster_tabs`
@@ -45,6 +47,8 @@ contracts. Status is tracked against the Millennium port.
   `globalHideRefreshCard`
 - `globalDedupeByName`, `globalHeroEnabled`, `globalGameInfoAbove`,
   `globalFriendsPlayingOverlay`, `globalFriendsPlayingOverlayRecent`
+- Millennium additions retained across the update: `keepShelvesStacked`,
+  `fadeRecentsTitle`
 
 ### Shelf collections and behavior
 
@@ -68,7 +72,10 @@ contracts. Status is tracked against the Millennium port.
   `onlinePrivacyAccepted`, `onlineMetadataEnabled`, `onlineHideOwnedGames`,
   `onlineHideOwnedNonSteam`, `onlineHideOwnedNonSteamCloud`
 - `activeProfileName`, `profiles`, `integrationsEnabled`, `featureToggles`
-- Profile fields: `id`, `name`, `createdAt`, `snapshot`, `hidden`, `trigger`
+- `profileTriggersEnabled`, `factoryProfileTrigger`, `autoCollapseEnabled`
+- `notificationsDisabled`, `notificationsDisabledAreas`, `showcaseSeen`
+- Profile fields: `id`, `name`, `createdAt`, `snapshot`, `hidden`, `trigger`,
+  `linkShelves`
 - Button binding fields: `cardHideRemove`, `cardHighlightToggle`,
   `cardQuickLaunch`, `navSearch`, `navSideNav`, `navSidecarOpen`,
   `navSidecarClose`; disabled binding ids are stored in
@@ -100,6 +107,8 @@ contracts. Status is tracked against the Millennium port.
   `hideInstallIndicator`, `hideSeeMore`, `hideRefreshCard`
 - Enrichment: `heroEnabled`, `gameInfoAbove`, `friendsPlayingOverlay`,
   `friendsPlayingOverlayRecent`, `dedupeByExactName`, `hiddenAppIds`
+- Conditional behavior: `visibility`, `autoPin`, `autoCollapse`,
+  `autoCollapseWhenEmpty`
 - Decoration cards: `syntheticCards[].position`, `image`, `text`, `link`,
   `link.type`, `link.value`, `size`, `alpha`, `placeholder`, `heroImage`,
   `shadowMode`
@@ -112,7 +121,8 @@ contracts. Status is tracked against the Millennium port.
 - Every visual, visibility, hero, friend, dedupe, and hidden-app option listed
   for regular shelves
 - Smart behavior: `refreshIntervalMinutes`, `smartParams`, `compositeModes`,
-  `compositeCombine`, `visibleHours`, `visibleDaysOfWeek`
+  `compositeCombine`, `visibleHours`, `visibleDaysOfWeek`, `visibility`,
+  `autoPin`, `autoCollapse`, `autoCollapseWhenEmpty`
 - Smart parameter keys: `maxPlaytimeMinutes`, `minPlaytimeMinutes`,
   `monthsAgo`, `yearsAgo`, `daysAgo`, `minDeckLevel`, `stalenessDays`,
   `cooldownDays`, `minMetacritic`, `minReviewScore`, `rotateEveryDays`,
@@ -135,7 +145,9 @@ contracts. Status is tracked against the Millennium port.
   `playtimeRange`, `nameIncludes`, `nameRegex`, `friends`,
   `friendsPlayingNow`, `friendsPlayedRecently`, `storeTag`, `achievements`,
   `collection`, `developer`, `publisher`, `appIdList`, `cloudAvailable`,
-  `controllerSupport`, `merge`, `shortcutType`, `appStatus`, `discount`
+  `controllerSupport`, `merge`, `shortcutType`, `appStatus`, `discount`,
+  `recentlyActive`, `neglected`, `systemCompatibility`,
+  `remotePlayLocation`, `priceRange`
 - Filter parameter fields: `mode`, `levels`, `days`, `minHours`, `maxHours`,
   `text`, `pattern`, `friends`, `tags`, `collectionId`, `developers`,
   `publishers`, `appIds`, `items`, `kinds`, `groups`, `minDiscount`,
@@ -211,20 +223,25 @@ integrations. They were retained unchanged in the Millennium build.
   `subscribeProfiles`, `getIntegrations`, `subscribeIntegrations`,
   `getSettingsSnapshot`, `subscribeSettingsSnapshot`
 - Runtime helpers: `getAssetUrls`, `getEnvironment`
+- Built-in catalogue reads: `listTriggerCatalog`, `listShelfTemplates`,
+  `listShortcuts`
 - Excluded compatibility probe: `hasTabMaster`
 
 ## Implementation status
 
-- All 18 in-scope backend RPCs are implemented in the Millennium Lua backend.
+- All 25 in-scope backend RPCs are implemented in the Millennium Lua backend.
+- Windows host identity, monitor count, CPU, and available-memory signals use
+  read-only PowerShell/CIM adapters. Bluetooth/headphone rules remain explicitly
+  unsupported on Windows, matching upstream's fail-open behavior off Linux.
 - All settings, regular-shelf, smart-shelf, source, filter, sorting,
   decoration-card, profile, binding, diagnostics, online, and public API v4
   fields remain on their original frontend implementation.
 - Settings are stored and returned as raw JSON documents after validation, so
   nested empty arrays and empty objects round-trip without Lua table-shape
   corruption.
-- Backup naming, summaries, 24-hour automatic throttling, 12-backup automatic
-  rotation, manual/import/pre-restore tags, import/export, and guarded paths are
-  implemented.
+- Backup naming, summaries, 24-hour automatic throttling, seven-day automatic
+  expiry, ten-snapshot total retention (automatic snapshots pruned first),
+  manual/import/pre-restore tags, import/export, and guarded paths are implemented.
 - Local JSON I/O, image Base64 reads (8 MiB cap), EmuDeck, RetroDECK, Heroic,
   Lutris, Moonlight, and Chiaki adapters are implemented.
 - Wishlist uses Steam's public `IWishlistService/GetWishlist` request. The
@@ -235,15 +252,9 @@ integrations. They were retained unchanged in the Millennium build.
 
 ## Verification status
 
-- TypeScript typecheck passes.
-- 585 inherited Vitest tests pass.
-- A live 92-field user settings document is returned byte-for-byte through the
-  Millennium RPC bridge.
-- A separate exhaustive fixture containing every top-level option and nested
-  empty arrays/objects passed an exact live save/load comparison, after which
-  the user's original settings were restored.
-- Public API v4 registration, registry reads, state reads, seven subscriptions,
-  persistent saved-filter lifecycle, environment, assets, profiles, and
-  integrations were exercised in the running Steam session.
-- The installed build has one Lua worker, a registered Millennium QAM panel,
-  and a live Big Picture home bridge rendering the configured shelf.
+- TypeScript typecheck passes for the v3.1.0 integration.
+- 683 Vitest tests pass across 56 files.
+- The prior v3.0.2 live build passed exact settings round-trips, public API v4
+  exercises, Lua worker/QAM registration, and Big Picture home rendering.
+- The v3.1.0 source has not yet been copied into the live Millennium plugin or
+  revalidated through Steam/CDP; live deployment remains a separate explicit step.
