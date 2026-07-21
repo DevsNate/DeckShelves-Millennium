@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { GameCard } from "./GameCard";
+import { NativeGameCard } from "./NativeGameCard";
 import { MoreCard } from "./MoreCard";
 import { RefreshCard } from "./RefreshCard";
 import { SyntheticCard } from "./SyntheticCard";
@@ -17,6 +18,10 @@ import type { DeckRowItem } from "./types";
    to opt out where the modal wants flat / read-only cards. */
 export interface ShelfRowProps {
   items: DeckRowItem[];
+  itemIndexOffset?: number;
+  nativeItemLeft?: number;
+  nativeCarouselWidth?: number;
+  suppressNativeLabel?: boolean;
   cardW: number;
   cardH: number;
   artH?: number;
@@ -68,6 +73,10 @@ export interface ShelfRowProps {
 
 function ShelfRowImpl({
   items,
+  itemIndexOffset = 0,
+  nativeItemLeft,
+  nativeCarouselWidth,
+  suppressNativeLabel = false,
   cardW, cardH, artH,
   featuredW, featuredH, featuredArtH,
   highlightFirst = false, highlightAll = false, highlightedSet,
@@ -87,6 +96,7 @@ function ShelfRowImpl({
   return (
     <>
       {items.map((item, idx) => {
+        const actualIndex = itemIndexOffset + idx;
         if (item.synthetic) {
           const isFeat = item.synthetic.size === "featured";
           return (
@@ -122,17 +132,16 @@ function ShelfRowImpl({
           );
         }
         const isFeatured = highlightAll
-          || (highlightFirst && idx === 0)
+          || (highlightFirst && actualIndex === 0)
           || (!!highlightedSet && item.appid !== undefined && highlightedSet.has(item.appid));
-        return (
+        const fallback = (
           <GameCard
-            key={item.id}
             item={item}
             cardW={isFeatured && featuredW !== undefined ? featuredW : cardW}
             cardH={isFeatured && featuredH !== undefined ? featuredH : cardH}
             artH={isFeatured && featuredArtH !== undefined ? featuredArtH : artH}
             featured={isFeatured}
-            cardIndex={idx}
+            cardIndex={actualIndex}
             hideStatusLine={hideStatusLine}
             hideNewBadge={hideNewBadge}
             hideDiscountBadge={hideDiscountBadge}
@@ -157,6 +166,34 @@ function ShelfRowImpl({
             onRemoveCard={onRemoveCard}
             hiddenSet={hiddenSet}
             onHideCard={onHideCard}
+          />
+        );
+        return (
+          <NativeGameCard
+            key={item.id}
+            item={item}
+            featured={isFeatured}
+            cardW={isFeatured && featuredW !== undefined ? featuredW : cardW}
+            cardH={isFeatured && featuredH !== undefined ? featuredH : cardH}
+            nativeItemLeft={nativeItemLeft}
+            nativeCarouselWidth={nativeCarouselWidth}
+            suppressNativeLabel={suppressNativeLabel}
+            friendsOverlay={friendsOverlay}
+            previewMode={previewMode}
+            hideStatusLine={hideStatusLine}
+            hideNewBadge={hideNewBadge}
+            hideDiscountBadge={hideDiscountBadge}
+            hideCompatIcons={hideCompatIcons}
+            hideNonSteamBadge={hideNonSteamBadge}
+            hideGameName={hideGameName}
+            hideInstallIndicator={hideInstallIndicator}
+            gameNamePosition={gameNamePosition}
+            playtimePosition={playtimePosition}
+            removableSet={removableSet}
+            onRemoveCard={onRemoveCard}
+            hiddenSet={hiddenSet}
+            onHideCard={onHideCard}
+            fallback={fallback}
           />
         );
       })}

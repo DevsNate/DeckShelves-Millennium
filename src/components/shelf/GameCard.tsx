@@ -16,10 +16,10 @@ import { resolveNativeCardClass } from "./cardUtils";
 import { getFriendsInApp } from "../../runtime/friendsState";
 import { getCurrentSettings, saveSettings } from "../../store/settingsStore";
 import { patchShelfInSettings } from "../../domain/settings";
-import { saveFocusTarget, beginFocusRestoreLoop } from "../../core/focusRestore";
 import { BTN, createMatcherState, matchEvent, parseCombo, parseRawCombo, resolveBindings } from "../../runtime/buttonBindings";
 import { subscribeControllerInput } from "../../runtime/controllerInput";
 import { resolveQuickLaunchAction } from "../../steam/appDisplayStatus";
+import { millenniumCardNavKey } from "../../core/steamOSVersion";
 
 // Build a {buttonId: label} map for Decky's Focusable `actionDescriptionMap`.
 // Only single-button bindings get a legend; chords/doubles silently drop.
@@ -88,11 +88,6 @@ export function toggleCardHighlight(shelfId: string | undefined, appid: number):
   } else {
     patch.highlightedAppIds = [...ids, appid];
   }
-  /* saveSettings triggers a Shelf re-render that may unmount/remount the
-     card and lose focus. Mirror the context-menu "Highlight" path: save
-     the focus target + start the restore loop so the card stays focused
-     across the settings → React reconcile cycle. */
-  try { saveFocusTarget(appid, shelfId); beginFocusRestoreLoop(); } catch {}
   if (isSmart) {
     const updated = smart.map((sh: any) => sh.id === shelfId ? { ...sh, ...patch } : sh);
     void saveSettings({ ...s, smartShelves: updated } as any);
@@ -298,6 +293,10 @@ export function GameCard({ item, cardW = CARD_W, cardH = CARD_ART_H, artH: artHP
   const buttonDownHandler = useCallback((evt: any) => {
     if (previewMode) return;
     try { dispatchHomeButtonDown(evt); } catch {}
+    // Millennium receives the complete button stream through the raw BP
+    // bridge below. Do not also run the Decky-shaped matcher when a Steam
+    // build happens to emit both paths for the same physical press.
+    if ((globalThis as any).__DECK_SHELVES_MILLENNIUM__) return;
     if (!appid) return;
     try {
       const b = resolveBindings(getCurrentSettings()?.buttonBindings as any, (getCurrentSettings() as any)?.buttonBindingsDisabled);
@@ -316,13 +315,16 @@ export function GameCard({ item, cardW = CARD_W, cardH = CARD_ART_H, artH: artHP
   }, [appid, previewMode, quickLaunch, removableSet, onRemoveCard, onHideCard, item.shelfId]);
 
   // Raw stream subscription for tokens the Decky home-button bus doesn't
-  /* forward (back-grip L4/L5/R4/R5). Decky-known tokens stay on the
-     buttonDownHandler path above to avoid firing twice for the same press.
+  /* forward (back-grip L4/L5/R4/R5). On Millennium this is the primary
+     stream for every binding because Focusable's Decky-style onButtonDown
+     callback is not consistently delivered. Decky-known tokens remain on
+     buttonDownHandler in the Decky build to avoid firing twice.
      Gated by `.gpfocus` so only the focused card's binding fires — same
      contract as Decky's onButtonDown, which only delivers to the focused
      Focusable. */
   useEffect(() => {
     if (previewMode || !appid) return;
+    const useRawForAll = !!(globalThis as any).__DECK_SHELVES_MILLENNIUM__;
     const usesRawOnly = (combo: string | null | undefined): boolean => {
       if (!combo) return false;
       const tokens = String(combo).toUpperCase().split("+");
@@ -336,13 +338,13 @@ export function GameCard({ item, cardW = CARD_W, cardH = CARD_ART_H, artH: artHP
         const b = resolveBindings(getCurrentSettings()?.buttonBindings as any, (getCurrentSettings() as any)?.buttonBindingsDisabled);
         const state = rawMatcherRef.current;
         const evtLike = { button: e.button };
-        if (usesRawOnly(b.cardQuickLaunch) && matchEvent(evtLike, parseRawCombo(b.cardQuickLaunch), state)) { quickLaunch(); return; }
-        if (usesRawOnly(b.cardHideRemove) && matchEvent(evtLike, parseRawCombo(b.cardHideRemove), state)) {
+        if ((useRawForAll || usesRawOnly(b.cardQuickLaunch)) && matchEvent(evtLike, parseRawCombo(b.cardQuickLaunch), state)) { quickLaunch(); return; }
+        if ((useRawForAll || usesRawOnly(b.cardHideRemove)) && matchEvent(evtLike, parseRawCombo(b.cardHideRemove), state)) {
           if (removableSet?.has(appid) && onRemoveCard) onRemoveCard(appid);
           else if (onHideCard) onHideCard(appid);
           return;
         }
-        if (usesRawOnly(b.cardHighlightToggle) && matchEvent(evtLike, parseRawCombo(b.cardHighlightToggle), state)) {
+        if ((useRawForAll || usesRawOnly(b.cardHighlightToggle)) && matchEvent(evtLike, parseRawCombo(b.cardHighlightToggle), state)) {
           try { toggleCardHighlight(item.shelfId, appid); } catch {}
           return;
         }
@@ -353,7 +355,7 @@ export function GameCard({ item, cardW = CARD_W, cardH = CARD_ART_H, artH: artHP
   useEffect(() => {
     function injectNativeClasses(): boolean {
       const doc = getPreferredSteamDocument();
-      const cls = resolveNativeCardClass(doc);
+      const cls = resolveNativeCardClass(doc, featured);
       if (cls === null) return false;
       setNativeCardClass(cls);
       const map = doc ? getRuntimeClassMap(doc) : null;
@@ -415,7 +417,7 @@ export function GameCard({ item, cardW = CARD_W, cardH = CARD_ART_H, artH: artHP
     };
     tryInject();
     return () => { if (timer) clearTimeout(timer); };
-  }, []);
+  }, [featured]);
 
   useEffect(() => {
     const el = cardRef.current;
@@ -617,6 +619,7 @@ export function GameCard({ item, cardW = CARD_W, cardH = CARD_ART_H, artH: artHP
   return (
     <Focusable
       ref={cardRef}
+      {...({ navKey: millenniumCardNavKey(item.shelfId, item.id, cardIndex) } as any)}
       className={`ds-card${featured ? ' ds-card--featured' : ''}${nativeCardClass ? ` ${nativeCardClass}` : ''}${hideCompatIcons ? ' ds-card--hide-compat' : ''}${hideNonSteamBadge ? ' ds-card--hide-non-steam-badge' : ''}`}
       focusClassName="gpfocus"
       role="listitem"

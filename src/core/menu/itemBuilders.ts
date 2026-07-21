@@ -14,7 +14,6 @@ import {
   clearOnlineShelfCache,
 } from "../shelfActions";
 import { patchShelfInSettings } from "../../domain/settings";
-import { saveFocusTarget, beginFocusRestoreLoop } from "../focusRestore";
 import { invalidateRandomSortCache } from "../../steam";
 import { invalidateSmartShelfCache } from "../../steam/smartShelves";
 import { triggerShelfRefresh } from "../shelfRefresh";
@@ -272,13 +271,8 @@ function buildCardActions(ctx: Ctx, mk: Mk): any[] {
 }
 
 function buildMk(dfl: any, R: any, focusedAppId: number, shelfId: string): Mk {
-  const preserveFocus = () => {
-    if (focusedAppId > 0) {
-      try { saveFocusTarget(focusedAppId, shelfId); beginFocusRestoreLoop(); } catch {}
-    }
-  };
   const item = (key: string, label: string, onSelected: () => void, disabled?: boolean) =>
-    R.createElement(dfl.MenuItem, { key, onSelected: () => { onSelected(); preserveFocus(); }, disabled }, label);
+    R.createElement(dfl.MenuItem, { key, onSelected, disabled }, label);
   const group = (key: string, label: string, ...children: any[]) =>
     R.createElement(dfl.MenuGroup, { key, label }, ...children);
   const checked = (flag: boolean, label: string) => (flag ? `✓ ${label}` : label);

@@ -39,6 +39,22 @@ export function DeckModalStyles() {
         margin-left: 15px;
       }
 
+      /* Shelf editors carry five tabs plus a live card preview. Keep that
+         editor roomy without opting the entire ConfirmModal into Steam's
+         near-fullscreen layout, which left a large dead area above its
+         footer on widescreen displays. */
+      .deck-shelves-modal-scope .DialogContent:has(.deck-shelves-edit-modal) {
+        width: min(760px, calc(100vw - 96px));
+        max-width: min(760px, calc(100vw - 96px));
+        height: auto;
+        max-height: calc(100vh - 72px);
+      }
+      .deck-shelves-modal-scope .DialogContent:has(.deck-shelves-edit-modal) .DialogContent_InnerWidth,
+      .deck-shelves-modal-scope .DialogContent:has(.deck-shelves-edit-modal) form {
+        width: 100%;
+        min-width: 0;
+      }
+
       .deck-shelves-modal-scope .name-field .${gamepadDialogClasses.Field} {
         padding-bottom: 16px;
         padding-top: 0px;

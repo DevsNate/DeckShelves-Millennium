@@ -7,6 +7,7 @@ import { logInfo } from "../../runtime/logger";
 import { type DeckRowItem, CARD_W, CARD_ART_H } from "./types";
 import { getCachedCardRadius } from "./shelfStyles";
 import { resolveNativeCardClass, retryWithIntervals } from "./cardUtils";
+import { millenniumCardNavKey } from "../../core/steamOSVersion";
 
 function findNativeCardSample(doc: Document | null): HTMLElement | null {
   const map = doc ? getRuntimeClassMap(doc) : null;
@@ -106,6 +107,7 @@ export function MoreCard({ item, cardW = CARD_W, cardH = CARD_ART_H, interactive
   return (
     <Focusable
       ref={cardRef}
+      {...({ navKey: millenniumCardNavKey(item.shelfId, item.id) } as any)}
       className={`ds-card${nativeCardClass ? ` ${nativeCardClass}` : ''}`}
       focusClassName="gpfocus"
       onActivate={() => { trackFeature("see_more"); item.onActivate?.(); }}

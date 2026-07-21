@@ -49,7 +49,7 @@ describe("notify — payload builder", () => {
 describe("notify — dispatch", () => {
   let toastSpy: ReturnType<typeof vi.fn>;
   beforeEach(async () => {
-    const decky = await import("../../shims/decky-api");
+    const decky = await import("@decky/api");
     toastSpy = vi.fn();
     vi.spyOn(decky.toaster, "toast").mockImplementation(toastSpy as any);
   });

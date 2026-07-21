@@ -124,6 +124,8 @@ const VISUAL_ENABLED_FLAGS: Array<[string, string]> = [
   ["globalEnableIcon", "icon"],
   ["globalEnableDescription", "description"],
   ["globalHeroEnabled", "hero"],
+  ["keepShelvesStacked", "stacked"],
+  ["fadeRecentsTitle", "fade-recents-title"],
   ["globalGameInfoAbove", "info-above"],
   ["globalFriendsPlayingOverlay", "friends"],
   ["globalFriendsPlayingOverlayRecent", "friends-recent"],

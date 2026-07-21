@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Tabs, Focusable } from "../runtime/host/decky";
 import { Navigation } from "@decky/ui";
 import { useSettingsController } from "../features/settings/controller";
@@ -18,6 +18,7 @@ import { BookmarkIcon, PersonIcon, PuzzleIcon, GamepadIcon, SaveIcon, ToolsIcon,
 import { useLightMode, useAdvancedMode } from "./ui/lightMode";
 import { hasExternalIntegrations } from "../core/pluginApi";
 import { consumePendingSettingsTab } from "../runtime/settingsNav";
+import { getPreferredSteamDocument } from "../runtime/steamHost";
 
 function tabLabel(icon: React.ReactNode, text: string): string {
   return (
@@ -82,6 +83,53 @@ export function SettingsPage() {
   const goBack = useCallback(() => {
     try { Navigation.NavigateBack(); } catch {}
   }, []);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const initialTabFocusDone = useRef(false);
+
+  useEffect(() => {
+    if (!controller.settings || initialTabFocusDone.current) return;
+    if ((globalThis as any).__DECK_SHELVES_MILLENNIUM__ !== true) return;
+    const doc = getPreferredSteamDocument();
+    const frame = (doc.defaultView ?? window).requestAnimationFrame(() => {
+      const page = doc.querySelector(".deck-shelves-settings-page");
+      const buttons = page?.querySelectorAll<HTMLElement>("[data-ds-page-tab-id]") ?? [];
+      const target = Array.from(buttons).find((button) => button.dataset.dsPageTabId === activeTab);
+      if (!target) return;
+      try { target.focus({ preventScroll: true }); }
+      catch { try { target.focus(); } catch {} }
+      initialTabFocusDone.current = true;
+    });
+    return () => (doc.defaultView ?? window).cancelAnimationFrame(frame);
+  }, [activeTab, controller.settings]);
+
+  useEffect(() => {
+    const scrollHost = scrollRef.current;
+    if (!scrollHost) return;
+    let frame: number | null = null;
+    const onFocusIn = (event: FocusEvent) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (!target || !scrollHost.contains(target)) return;
+      if (frame !== null) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        const hostRect = scrollHost.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const topEdge = hostRect.top + 12;
+        const bottomEdge = hostRect.bottom - 16;
+        let delta = 0;
+        if (targetRect.top < topEdge) delta = targetRect.top - topEdge;
+        else if (targetRect.bottom > bottomEdge) delta = targetRect.bottom - bottomEdge;
+        if (Math.abs(delta) < 1) return;
+        try { scrollHost.scrollBy({ top: delta, behavior: "smooth" }); }
+        catch { scrollHost.scrollTop += delta; }
+      });
+    };
+    scrollHost.addEventListener("focusin", onFocusIn, true);
+    return () => {
+      scrollHost.removeEventListener("focusin", onFocusIn, true);
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [activeTab]);
 
   if (!controller.settings) return null;
 
@@ -94,7 +142,11 @@ export function SettingsPage() {
     >
       <DeckQAMStyles />
       <PageHeader title={t("settings_page_title")} onBack={goBack} active="settings" />
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div
+        ref={scrollRef}
+        className="ds-settings-page-scroll"
+        style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", overscrollBehavior: "contain" }}
+      >
         <Tabs
           activeTab={activeTab}
           onShowTab={setActiveTab}

@@ -2,14 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { _labelOverhangPx } from '../../components/DeckRow';
 
 describe('_labelOverhangPx — row paddingBottom budget', () => {
-  it('clamps to a 60 px minimum so existing shelves keep their gap', () => {
-    expect(_labelOverhangPx({ hideStatusLine: true, hideGameNames: true })).toBeGreaterThanOrEqual(60);
+  it('reserves Steam\'s 52 px native title/status band exactly once', () => {
+    expect(_labelOverhangPx({ hideStatusLine: true, hideGameNames: true })).toBe(52);
   });
 
-  it('reserves more space when status line is visible', () => {
+  it('keeps the native band height stable when status visibility changes', () => {
     const off = _labelOverhangPx({ hideStatusLine: true });
     const on = _labelOverhangPx({ hideStatusLine: false });
-    expect(on).toBeGreaterThan(off);
+    expect(on).toBe(off);
   });
 
   it('reserves more space when per-card description is visible (not below logo)', () => {
@@ -24,11 +24,11 @@ describe('_labelOverhangPx — row paddingBottom budget', () => {
     expect(inHero).toBe(off);
   });
 
-  it('combined status line + per-card description is more than either alone — regression for the binary 60/84 split that under-counted this case', () => {
+  it('adds the description once on top of the fixed native viewport budget', () => {
     const statusOnly = _labelOverhangPx({ hideStatusLine: false, enableDescription: false });
     const descOnly = _labelOverhangPx({ hideStatusLine: true, enableDescription: true });
     const both = _labelOverhangPx({ hideStatusLine: false, enableDescription: true });
     expect(both).toBeGreaterThan(statusOnly);
-    expect(both).toBeGreaterThan(descOnly);
+    expect(both).toBe(descOnly);
   });
 });

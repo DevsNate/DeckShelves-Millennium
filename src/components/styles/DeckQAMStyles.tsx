@@ -356,6 +356,29 @@ export function DeckQAMStyles() {
         background: var(--ds-border, rgba(255,255,255,0.08));
         margin: 0;
       }
+      .deck-shelves-settings-page .ds-settings-page-scroll {
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      .deck-shelves-settings-page .ds-settings-page-scroll::-webkit-scrollbar {
+        display: none;
+        width: 0;
+        height: 0;
+      }
+      /* Decky's Tabs gives its content viewport a fixed height and
+         overflow:hidden. That is fine for pages that own an inner scroller,
+         but Deck Shelves' detail tabs are normal document-flow content, so
+         rows below the viewport became unreachable. Let the Tabs content
+         expand and make our outer host the single controller-aware scroller. */
+      .deck-shelves-settings-page .ds-settings-page-scroll > * {
+        height: auto !important;
+        min-height: 100%;
+        overflow: visible !important;
+      }
+      .deck-shelves-settings-page .ds-settings-page-scroll > * > :nth-child(2) {
+        height: auto !important;
+        overflow: visible !important;
+      }
 
       /* The native Decky ToggleField wrapper paints an opaque slate
          (rgb(35,38,46)) that ignores the theme. Re-skin every config toggle

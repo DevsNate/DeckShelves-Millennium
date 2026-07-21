@@ -7,6 +7,7 @@ import { type DeckRowItem, CARD_W, CARD_ART_H } from "./types";
 import { getCachedCardRadius } from "./shelfStyles";
 import { resolveNativeCardClass, retryWithIntervals } from "./cardUtils";
 import { toggleCardHighlight } from "./GameCard";
+import { millenniumCardNavKey } from "../../core/steamOSVersion";
 
 export function PlaceholderCard({
   item,
@@ -38,12 +39,12 @@ export function PlaceholderCard({
 
   useEffect(() => {
     return retryWithIntervals(() => {
-      const cls = resolveNativeCardClass(getPreferredSteamDocument());
+      const cls = resolveNativeCardClass(getPreferredSteamDocument(), featured);
       if (cls === null) return false;
       setNativeCardClass(cls);
       return true;
     }, [250, 500, 800, 1200]);
-  }, []);
+  }, [featured]);
 
   /* View (SELECT) binding — mirrors GameCard. Needed here because cards
      without library art fall through to PlaceholderCard, and the user
@@ -112,6 +113,7 @@ export function PlaceholderCard({
   return (
     <Focusable
       ref={cardRef}
+      {...({ navKey: millenniumCardNavKey(item.shelfId, item.id) } as any)}
       className={`ds-card${featured ? ' ds-card--featured' : ''}${nativeCardClass ? ` ${nativeCardClass}` : ''}`}
       focusClassName="gpfocus"
       role="listitem"

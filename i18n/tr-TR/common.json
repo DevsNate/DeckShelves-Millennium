@@ -73,6 +73,7 @@
   "select_items_all": "Tumunu sec",
   "global_game_info_above": "Oyun bilgisini kartların üstünde göster",
   "game_info_above_label": "Oyun bilgisini kartların üstünde göster",
+  "keep_shelves_stacked_label": "Deck Shelves raflarını üst üste tut",
   "confirm_continue": "Devam et",
   "couple_info_above_title": "Raf başlığı gizlensin mi?",
   "couple_info_above_body": "Oyun bilgisini üstte göstermek, başlığın gizlendiği tam sayfa düzenini kullanır — bu yüzden raf başlığı da gizlenir. İstediğiniz zaman tekrar gösterebilirsiniz.",

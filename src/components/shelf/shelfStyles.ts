@@ -73,13 +73,13 @@ const STYLES_POLL_MS = 3000;
 const STYLES_POLL_MS_IDLE = 30000;
 
 /* Persisted cache (cold-start reflow avoidance).
-   v3 stores ONE entry per viewport fingerprint so switching displays
+   v4 stores ONE entry per viewport fingerprint so switching displays
    (1440p external ↔ 800p Deck) restores the previously-measured dims for
    each resolution instead of falling back to constants when the live
    recents is hidden and can't be re-measured. */
 const DIMS_CACHE_KEY = "ds-cardsize";
-const DIMS_CACHE_VERSION = 3;
-type PersistedDimsV3 = { v: number; entries: Array<{ fp: { vw: number; vh: number; dpr: number }; dims: NativeCardDims }> };
+const DIMS_CACHE_VERSION = 4;
+type PersistedDimsV4 = { v: number; entries: Array<{ fp: { vw: number; vh: number; dpr: number }; dims: NativeCardDims }> };
 // Legacy v2 shape — read once on first run to migrate the prior single-entry
 // cache into the new multi-entry map so users don't lose their tuned dims.
 type PersistedDimsV2 = { v: number; dims: NativeCardDims; vw: number; vh: number; dpr: number };
@@ -128,7 +128,7 @@ function viewportFingerprint(): { vw: number; vh: number; dpr: number } {
    Migrates v2 (single entry) into v3 (entries array) on first read so users
    don't lose their previously-tuned dims.
    v2 migration: convert the single { dims, vw, vh, dpr } into a v3 entry. */
-function migrateV2Entry(parsed: any): PersistedDimsV3 | null {
+function migrateV2Entry(parsed: any): PersistedDimsV4 | null {
   if (parsed?.v === 2 && parsed.dims && typeof parsed.vw === 'number') {
     const v2 = parsed as PersistedDimsV2;
     return { v: DIMS_CACHE_VERSION, entries: [{ fp: { vw: v2.vw, vh: v2.vh, dpr: v2.dpr ?? 1 }, dims: v2.dims }] };
@@ -136,12 +136,12 @@ function migrateV2Entry(parsed: any): PersistedDimsV3 | null {
   return null;
 }
 
-function loadPersistedEntries(): PersistedDimsV3 {
+function loadPersistedEntries(): PersistedDimsV4 {
   try {
     const raw = (globalThis as any)?.localStorage?.getItem(DIMS_CACHE_KEY);
     if (!raw) return { v: DIMS_CACHE_VERSION, entries: [] };
     const parsed = JSON.parse(raw);
-    if (parsed?.v === DIMS_CACHE_VERSION && Array.isArray(parsed.entries)) return parsed as PersistedDimsV3;
+    if (parsed?.v === DIMS_CACHE_VERSION && Array.isArray(parsed.entries)) return parsed as PersistedDimsV4;
     const migrated = migrateV2Entry(parsed);
     if (migrated) return migrated;
   } catch {}

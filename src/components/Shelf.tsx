@@ -8,7 +8,6 @@ import type { PlatformAppMeta } from "../runtime/platform";
 import { DeckRow, type DeckRowItem } from "./DeckRow";
 import { shouldShowMoreCard, shouldShowRefreshCard } from "./shelf/trailingCards";
 import { showGameMenu, buildShelfContextMenu } from "../core/steamGameMenu";
-import { saveFocusTarget } from "../core/focusRestore";
 import { subscribeShelfRefresh, triggerShelfRefresh } from "../core/shelfRefresh";
 import { mark, measure } from "../core/perf";
 import { logInfo } from "../runtime/logger";
@@ -568,7 +567,7 @@ function ShelfViewImpl({ shelf, globalMatchNativeSize = false, globalHighlightFi
         name: item.name,
         portraitUrl: item.portraitUrl,
         heroUrl: item.heroUrl,
-        onActivate: () => { saveFocusTarget(appid, shelf.id); platform.navigateToApp(appid); },
+        onActivate: () => platform.navigateToApp(appid),
         onMenuButton,
         deckCompatCategory: item.deckCompatCategory,
         playtimeMinutes: item.playtimeMinutes,

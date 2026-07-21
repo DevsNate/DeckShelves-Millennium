@@ -5,6 +5,7 @@ import { trackFeature } from "../../steam/usageTracking";
 import { type DeckRowItem, CARD_W, CARD_ART_H } from "./types";
 import { getCachedCardRadius } from "./shelfStyles";
 import { resolveNativeCardClass, retryWithIntervals } from "./cardUtils";
+import { millenniumCardNavKey } from "../../core/steamOSVersion";
 
 const refreshIconSvg = (
   <svg
@@ -120,6 +121,7 @@ export function RefreshCard({ item, cardW = CARD_W, cardH = CARD_ART_H, interact
   return (
     <Focusable
       ref={cardRef}
+      {...({ navKey: millenniumCardNavKey(item.shelfId, item.id) } as any)}
       className={`ds-card${nativeCardClass ? ` ${nativeCardClass}` : ''}`}
       focusClassName="gpfocus"
       onActivate={handleActivate}

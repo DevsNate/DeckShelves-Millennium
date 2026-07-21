@@ -73,6 +73,7 @@
   "select_items_all": "Selecionar tudo",
   "global_game_info_above": "Exibir informações do jogo em cima",
   "game_info_above_label": "Exibir informações do jogo em cima",
+  "keep_shelves_stacked_label": "Manter Deck Shelves empilhadas",
   "confirm_continue": "Continuar",
   "couple_info_above_title": "Ocultar o título da prateleira?",
   "couple_info_above_body": "Exibir informações do jogo emcima usa o layout de página inteira, no qual o título fica oculto — então o título da prateleira também será ocultado. Você pode exibi-lo novamente a qualquer momento pelo botão de ocultar título.",

@@ -472,7 +472,11 @@ export const SettingsSchema = z.object({
   recentsReplaceSource: z.boolean().default(false),
   hideHomeTabs: z.boolean().default(false),
   shelfHeroBackground: z.boolean().default(false),
-  globalMatchNativeSize: z.boolean().default(false),
+  // Prevent Art Hero's viewport-height native carousel rules from turning
+  // each Deck Shelves row into a separate page. Global by design.
+  keepShelvesStacked: z.boolean().default(true),
+  fadeRecentsTitle: z.boolean().optional(),
+  globalMatchNativeSize: z.boolean().default(true),
   globalHighlightFirst: z.boolean().default(false),
   globalHighlightAll: z.boolean().default(false),
   globalHighlightRandom: z.boolean().optional(),

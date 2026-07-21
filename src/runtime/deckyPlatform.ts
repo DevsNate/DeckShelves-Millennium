@@ -4,9 +4,21 @@ import type { ShelfSource } from "../types";
 import type { PlatformApi } from "./platform";
 import { logError } from "./logger";
 
+let lastAppNavigation = { appid: 0, at: 0 };
+
 function navigate(appid: number) {
+  const now = Date.now();
+  // A single controller activation can arrive through onActivate,
+  // onOKButton and vgp_onok. The card-local guard is lost if navigation
+  // remounts the home tree between callbacks, so keep the final route push
+  // guarded at module scope as well.
+  if (lastAppNavigation.appid === appid && now - lastAppNavigation.at < 1000) return;
+  lastAppNavigation = { appid, at: now };
   try {
-    Navigation.Navigate(`/library/app/${appid}`);
+    const nav = resolveNav();
+    if (typeof nav?.Navigate === "function") nav.Navigate(`/library/app/${appid}`);
+    else if (typeof nav?.NavigateTo === "function") nav.NavigateTo(`/library/app/${appid}`);
+    else Navigation.Navigate(`/library/app/${appid}`);
   } catch (error) {
     logError("RUNTIME", "navigateToApp failed", String(error));
   }

@@ -309,8 +309,13 @@ export async function restoreBackup(name: string): Promise<Settings | null> {
   try {
     logInfo("STORAGE", "restoreBackup start", { name });
     const raw = await withTimeout(call<[unknown], any>("restore_backup", { name }), 15000);
-    if (!raw?.ok || !raw?.state) return null;
-    const next = normalize(raw.state);
+    if (!raw?.ok) return null;
+    // Millennium's Lua backend restores the original JSON document byte for
+    // byte so nested empty arrays retain their identity. Fetch that document
+    // after restore instead of requiring the response envelope to re-encode
+    // the state through Lua's ambiguous empty-table representation.
+    const restored = await withTimeout(call<[], unknown>("get_settings"), 8000);
+    const next = normalize(restored);
     notify(next);
     logInfo("STORAGE", "restoreBackup success", { shelfCount: next.shelves.length });
     return next;

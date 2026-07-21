@@ -62,6 +62,32 @@ describe('webpackCompat discovery', () => {
     expect(map!.viewport).toBe('_ancToken');
   });
 
+  it('never treats a Deck Shelves ReactVirtualized grid as the native source', () => {
+    const doc = document as Document;
+    document.body.innerHTML = '';
+
+    const mount = doc.createElement('div');
+    mount.id = 'deck-shelves-home-root';
+    const borrowed = doc.createElement('div');
+    borrowed.className = 'ReactVirtualized__Grid__innerScrollContainer _deckShelvesGrid';
+    mount.appendChild(borrowed);
+    doc.body.appendChild(mount);
+
+    const viewport = doc.createElement('div');
+    viewport.className = '_nativeViewport';
+    viewport.style.overflowY = 'auto';
+    Object.defineProperty(viewport, 'scrollHeight', { value: 1000, configurable: true });
+    Object.defineProperty(viewport, 'clientHeight', { value: 400, configurable: true });
+    const nativeGrid = doc.createElement('div');
+    nativeGrid.className = 'ReactVirtualized__Grid__innerScrollContainer _nativeGrid';
+    viewport.appendChild(nativeGrid);
+    doc.body.appendChild(viewport);
+
+    const map = discoverClassMap(doc);
+    expect(map?.scrollGrid).toBe('_nativeGrid');
+    expect(Object.values(map ?? {})).not.toContain('_deckShelvesGrid');
+  });
+
   it('setRuntimeClassMap and getRuntimeClassMap roundtrip', () => {
     const doc = document as Document;
     document.body.innerHTML = '';

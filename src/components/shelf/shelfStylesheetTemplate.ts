@@ -36,6 +36,51 @@ export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
     .Panel.ds-shelf { background: transparent !important; }
     .ds-row-scroll { scrollbar-width: none; -ms-overflow-style: none; }
     .ds-row-scroll::-webkit-scrollbar { display: none; width: 0; height: 0; }
+    [data-ds-recents-title-faded="true"] {
+      opacity: 0 !important;
+      transition: opacity 0.28s cubic-bezier(0.17, 0.45, 0.14, 0.83) !important;
+      pointer-events: none !important;
+    }
+    /* Art Hero stacked-shelf compatibility -------------------------------
+       Deck Shelves renders Steam's real card components, so Art Hero's
+       global selectors also match them. Its Mini Carousel
+       dependency applies transform + expanded width + negative margin as a
+       coordinated trio; resetting only part of that trio caused the narrow
+       and left-cropped shelves during the compatibility experiment.
+
+       Keep Art Hero itself stock. When the global Deck Shelves setting is on,
+       neutralise those rules only inside Deck Shelves. */
+    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] .ds-shelf {
+      height: auto !important;
+      min-height: 0 !important;
+    }
+    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] .ds-native-carousel-root {
+      top: 0 !important;
+      height: var(--ds-native-carousel-height) !important;
+    }
+    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] [data-ds-native-card="true"] ._1HIFNGSxh4-jOhPiDynR4C {
+      position: relative !important;
+      bottom: auto !important;
+    }
+    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] [data-ds-native-card="true"] ._3bvCHoWj4rDdZr3mnKlXaf {
+      top: 0 !important;
+    }
+    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] [data-ds-native-card="true"] .ZkD6We6MqGbOsa9K3yiY3 {
+      position: static !important;
+      top: auto !important;
+    }
+    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] [data-ds-native-card="true"] .gpfocuswithin > .ZkD6We6MqGbOsa9K3yiY3,
+    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] [data-ds-native-card="true"] :hover ~ .ZkD6We6MqGbOsa9K3yiY3,
+    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] [data-ds-native-card="true"] .ZkD6We6MqGbOsa9K3yiY3._3tdVJpA0NVV1y7pIQ87DkB {
+      transform: translateY(-4px) !important;
+      transition-delay: 0.14s !important;
+      visibility: visible !important;
+      position: static !important;
+      top: auto !important;
+    }
+    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] [data-ds-native-card="true"] ._25QboeMYEk12Wt3i35P_EG {
+      display: block !important;
+    }
 
     /* The Opção B promotion adds the native wrapper class to our shelves
        so theme rules (Obsidian backgrounds, Delly fades, ArtHero
@@ -50,6 +95,11 @@ export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
        tall flex container when needed. */
     .Panel.ds-shelf {
       height: auto !important;
+      /* The root is a constrained flex column. Without this, multiple shelves
+         shrink to fit the viewport even though their rows are taller, and the
+         shelf's overflow rule clips the game label/status area. Native Steam
+         rows keep their full capsule height and let the page scroll instead. */
+      flex-shrink: 0 !important;
     }
 
     /* ── SLH alt C shim (data-ds-slh="1") ─────────────────────────────────
@@ -205,17 +255,20 @@ export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
         box-shadow 0.4s cubic-bezier(0, 0.73, 0.48, 1),
         transform 0.4s cubic-bezier(0, 0.73, 0.48, 1) !important;
     }
-    /* Focus pop: native wraps each card in its own perspective:300px
-       container so translateZ(7px) foreshortens into a ~2.4 % zoom.
-       DS has no per-card wrapper; perspective on the row tanked nav
-       latency (17 s spikes). 1.025 bumped the swallow rate from 0 % to
-       33 %; 1.015 kept 0 % but read as too subtle. 1.02 is the middle
-       ground — more visible zoom while staying within the hit-test
-       tolerance Steam's nav controller allows. */
+    /* Native focus lift. Steam's portrait card uses translateZ(15px) while
+       its landscape/featured capsule uses translateZ(7px), both beneath a
+       perspective:300px parent. Apply the equivalent projection directly so
+       the custom row keeps its focus bookkeeping while matching the rendered
+       native scale. */
     #deck-shelves-home-root .ds-card:focus,
     #deck-shelves-home-root .ds-card.gpfocus,
     #deck-shelves-home-root .ds-card:hover {
-      transform: scale(1.025);
+      transform: perspective(300px) translateZ(15px);
+    }
+    #deck-shelves-home-root .ds-card--featured:focus,
+    #deck-shelves-home-root .ds-card--featured.gpfocus,
+    #deck-shelves-home-root .ds-card--featured:hover {
+      transform: perspective(300px) translateZ(7px);
     }
     /* Inline badge stays visible on focused cards too — the focus ring
        can visually overlap but the badge must never disappear. */
@@ -229,8 +282,8 @@ export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
     #deck-shelves-home-root .ds-row-scroll:focus,
     #deck-shelves-home-root .ds-row-scroll.gpfocus,
     #deck-shelves-home-root .ds-row-scroll.gpfocuswithin,
-    #deck-shelves-home-root .Panel.gpfocus,
-    #deck-shelves-home-root .Focusable.gpfocus,
+    #deck-shelves-home-root .ds-shelf.Panel.gpfocus,
+    #deck-shelves-home-root .ds-shelf.Panel.gpfocuswithin,
     #deck-shelves-home-root [class*="row"].gpfocus {
       outline: none !important;
       border: none !important;
@@ -240,20 +293,59 @@ export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
     #deck-shelves-home-root .ds-card:focus,
     #deck-shelves-home-root .ds-card.gpfocus,
     #deck-shelves-home-root .ds-card:hover {
-      outline: none !important;
-      outline-offset: 0px !important;
-      border: none !important;
-      box-shadow: rgba(0, 0, 0, 0.5) 0px 16px 24px 0px !important;
       z-index: 12;
     }
-    /* Suppress our focus drop shadow when the "Focus Highlight Color" theme's
-       Round Compatibility patch is on — that patch removes the native card
-       focus indicator, so DS cards should match. Spec needs the #id prefix
-       to beat the (1,2,0) original focus rule. */
-    #deck-shelves-home-root .deck-shelves-root[data-ds-theme-focus-round-compat="true"] .ds-card:focus,
-    #deck-shelves-home-root .deck-shelves-root[data-ds-theme-focus-round-compat="true"] .ds-card.gpfocus,
-    #deck-shelves-home-root .deck-shelves-root[data-ds-theme-focus-round-compat="true"] .ds-card:hover {
+    /* A native-card host participates in Deck Shelves focus tracking, but
+       Steam's capsule owns its visual transform, shadow and shine. Neutralise
+       the custom-card shell so those effects are not applied twice. */
+    #deck-shelves-home-root .ds-card.ds-card--native,
+    #deck-shelves-home-root .ds-card.ds-card--native:hover,
+    #deck-shelves-home-root .ds-card.ds-card--native:focus,
+    #deck-shelves-home-root .ds-card.ds-card--native.gpfocus {
+      transform: none !important;
       box-shadow: none !important;
+      filter: none !important;
+      border: 0 !important;
+      outline: 0 !important;
+      background: transparent !important;
+      transition: none !important;
+      z-index: auto !important;
+      isolation: auto !important;
+    }
+    #deck-shelves-home-root .ds-card.ds-card--native::after {
+      display: none !important;
+      content: none !important;
+      animation: none !important;
+    }
+    /* Steam's complete carousel item remains responsible for card visuals.
+       These stable markers only apply Deck Shelves visibility/alignment
+       settings to native title/status sub-elements discovered at runtime. */
+    #deck-shelves-home-root .ds-card--native[data-ds-hide-game-name="true"] .ds-native-game-name,
+    #deck-shelves-home-root .ds-card--native[data-ds-hide-status="true"] .ds-native-status-line,
+    #deck-shelves-home-root .ds-card--native[data-ds-hide-new-badge="true"] .ds-native-new-badge,
+    #deck-shelves-home-root .ds-card--native[data-ds-hide-discount-badge="true"] .ds-native-discount-badge,
+    #deck-shelves-home-root .ds-card--native[data-ds-hide-compat="true"] .ds-native-compat,
+    #deck-shelves-home-root .ds-card--native[data-ds-hide-install="true"] .ds-native-install-indicator {
+      display: none !important;
+    }
+    /* During Steam's native 120 ms carousel pan, the destination capsule can
+       expose its overflowing label one frame before focus leaves the source.
+       Keep label ownership with the source until Steam completes the focus
+       hand-off so adjacent native titles never paint over one another. */
+    #deck-shelves-home-root .ds-card--native[data-ds-suppress-native-label="true"] .ds-native-game-name,
+    #deck-shelves-home-root .ds-card--native[data-ds-suppress-native-label="true"] .ds-native-status-line {
+      visibility: hidden !important;
+      opacity: 0 !important;
+    }
+    #deck-shelves-home-root .ds-card--native[data-ds-game-name-position="center"] .ds-native-game-name,
+    #deck-shelves-home-root .ds-card--native[data-ds-playtime-position="center"] .ds-native-status-line {
+      text-align: center !important;
+      justify-content: center !important;
+    }
+    #deck-shelves-home-root .ds-card--native[data-ds-game-name-position="right"] .ds-native-game-name,
+    #deck-shelves-home-root .ds-card--native[data-ds-playtime-position="right"] .ds-native-status-line {
+      text-align: right !important;
+      justify-content: flex-end !important;
     }
     /* Synthetic decoration cards with placeholder=false (the default)
        render no background fill - the native card class still carries
@@ -406,7 +498,6 @@ export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
       40% { opacity: 1; }
       100% { opacity: 0; }
     }
-    #deck-shelves-home-root .ds-card *:focus { outline: none !important; box-shadow: none !important; }
     .ds-card-art {
       position: absolute !important;
       inset: 0 !important;
@@ -994,7 +1085,7 @@ export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
       --ds-hero-h: calc(100% + 56px);
     }
     /* FORCE: clean page-per-shelf (no margin, no hero fade). */
-    .deck-shelves-root[data-ds-theme-hero-fullscreen="true"][data-ds-force-themes="true"] .ds-shelf {
+    .deck-shelves-root[data-ds-theme-hero-fullscreen="true"][data-ds-force-themes="true"] .ds-shelf[data-ds-recents-slot="true"] {
       margin-bottom: 0 !important;
     }
     .deck-shelves-root[data-ds-theme-hero-fullscreen="true"][data-ds-force-themes="true"] .ds-shelf[data-ds-recents-slot="true"] [data-ds-per-shelf-hero="true"] {

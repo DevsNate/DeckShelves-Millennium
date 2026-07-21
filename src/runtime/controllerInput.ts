@@ -45,6 +45,30 @@ export interface ControllerEvent {
   slot: number;
 }
 
+/* Steam has shipped both positional and object-shaped controller callbacks.
+   Keep the normalizer outside the injected BP script as well so the
+   SharedJSContext fallback and tests exercise the same accepted shapes. */
+export function normalizeControllerCallbackArgs(args: any[]): ControllerEvent | null {
+  if (args.length >= 3) {
+    const slot = Number(args[0]);
+    const button = Number(args[1]);
+    if (Number.isFinite(slot) && Number.isFinite(button)) {
+      return { slot, button, pressed: !!args[2] };
+    }
+  }
+  const value = args[0];
+  if (!value || typeof value !== "object") return null;
+  const first = (...keys: string[]) => {
+    for (const key of keys) if (Object.prototype.hasOwnProperty.call(value, key)) return value[key];
+    return undefined;
+  };
+  const slot = Number(first("s", "slot", "controller_slot", "controllerSlot", "controllerIndex", "unControllerIndex", "nControllerIndex"));
+  const button = Number(first("b", "button", "button_id", "buttonId", "eButton", "unButton"));
+  const pressedValue = first("p", "pressed", "bPressed", "down", "bDown");
+  if (!Number.isFinite(slot) || !Number.isFinite(button) || pressedValue === undefined) return null;
+  return { slot, button, pressed: !!pressedValue };
+}
+
 type Listener = (e: ControllerEvent) => void;
 
 const listeners = new Set<Listener>();
@@ -176,19 +200,37 @@ function installBPInjection(): boolean {
   } catch (e) {
     try { g.__ds_bp_keydown_err = String(e).slice(0, 200); } catch {}
   }
-  if (view.__ds_bp_input_installed) {
+  const INPUT_BRIDGE_VERSION = 2;
+  if (view.__ds_bp_input_version === INPUT_BRIDGE_VERSION) {
     g.__ds_input_bp_view = view;
     return true;
   }
   try {
     const body = [
-      "if (this.__ds_bp_input_installed) return;",
+      "if (this.__ds_bp_input_version === 2) return;",
+      "this.__ds_bp_input_version = 2;",
       "this.__ds_bp_input_installed = true;",
       "this.__ds_bp_input_log = [];",
       "this.__ds_bp_input_regs = [];",
       "var _log = this.__ds_bp_input_log;",
       "var _regs = this.__ds_bp_input_regs;",
       "var _seen = new Set();",
+      "var _first = function (v, keys) {",
+      "  for (var i = 0; i < keys.length; i++) if (Object.prototype.hasOwnProperty.call(v, keys[i])) return v[keys[i]];",
+      "};",
+      "var _normalise = function (args) {",
+      "  if (args.length >= 3) {",
+      "    var ps = Number(args[0]), pb = Number(args[1]);",
+      "    if (isFinite(ps) && isFinite(pb)) return { s: ps, b: pb, p: !!args[2] };",
+      "  }",
+      "  var v = args[0];",
+      "  if (!v || typeof v !== 'object') return null;",
+      "  var s = Number(_first(v, ['s','slot','controller_slot','controllerSlot','controllerIndex','unControllerIndex','nControllerIndex']));",
+      "  var b = Number(_first(v, ['b','button','button_id','buttonId','eButton','unButton']));",
+      "  var p = _first(v, ['p','pressed','bPressed','down','bDown']);",
+      "  if (!isFinite(s) || !isFinite(b) || p === undefined) return null;",
+      "  return { s: s, b: b, p: !!p };",
+      "};",
       "var _tryReg = function (Input, tag) {",
       "  if (!Input) return;",
       "  ['RegisterForControllerInputMessages','RegisterForControllerCommandMessages','RegisterForTouchMenuInputMessages'].forEach(function (m) {",
@@ -199,7 +241,8 @@ function installBPInjection(): boolean {
       "    try {",
       "      var reg = fn.call(Input, function () {",
       "        var args = Array.prototype.slice.call(arguments);",
-      "        _log.push({ src: tag + '.' + m, args: args.map(function (a) { return (typeof a === 'object' && a) ? Object.keys(a).slice(0, 8) : a; }), t: Date.now() });",
+      "        var ev = _normalise(args);",
+      "        if (ev) _log.push({ s: ev.s, b: ev.b, p: ev.p, src: tag + '.' + m, t: Date.now() });",
       "        if (_log.length > 200) _log.shift();",
       "      });",
       "      _regs.push({ tag: tag, method: m, reg: !!reg });",
@@ -234,6 +277,8 @@ function installBPInjection(): boolean {
 
 let pollCursor = 0;
 let keyPollCursor = 0;
+let polledInputLog: any[] | null = null;
+let polledKeyLog: any[] | null = null;
 function startPolling(): void {
   if (pollTimer != null) return;
   const g = globalThis as any;
@@ -242,14 +287,17 @@ function startPolling(): void {
       const view = g.__ds_input_bp_view;
       const log = view?.__ds_bp_input_log;
       if (Array.isArray(log)) {
+        if (log !== polledInputLog) { polledInputLog = log; pollCursor = 0; }
         while (pollCursor < log.length) {
           const entry = log[pollCursor++];
           if (!entry) continue;
-          dispatch({ slot: entry.s, button: entry.b, pressed: entry.p });
+          const ev = normalizeControllerCallbackArgs([entry]);
+          if (ev) dispatch(ev);
         }
       }
       const kbLog = view?.__ds_bp_keydown_log;
       if (Array.isArray(kbLog)) {
+        if (kbLog !== polledKeyLog) { polledKeyLog = kbLog; keyPollCursor = 0; }
         while (keyPollCursor < kbLog.length) {
           const entry = kbLog[keyPollCursor++];
           if (!entry) continue;
@@ -276,7 +324,8 @@ function ensureInstalled(): void {
     const Input = apis[i];
     try {
       const reg = Input.RegisterForControllerInputMessages((slot: number, button: number, pressed: boolean) => {
-        dispatch({ slot, button, pressed });
+        const ev = normalizeControllerCallbackArgs([slot, button, pressed]);
+        if (ev) dispatch(ev);
       });
       unregisterAll.push(() => { try { reg?.unregister?.(); } catch {} });
     } catch (e) {
@@ -291,6 +340,9 @@ function ensureInstalled(): void {
       try { if (pollTimer != null) (globalThis as any).clearInterval?.(pollTimer); } catch {}
       pollTimer = null;
       pollCursor = 0;
+      keyPollCursor = 0;
+      polledInputLog = null;
+      polledKeyLog = null;
     };
     installed = true;
     try { (globalThis as any).__ds_input_installed = { sharedJs: unregisterAll.length, bp: bpOk }; } catch {}

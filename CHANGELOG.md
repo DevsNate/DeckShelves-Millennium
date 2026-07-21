@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Global "Keep Deck Shelves stacked" option.** Enabled by default in Global Visual settings, this keeps every Deck Shelves carousel as a compact row when Art Hero is active. Deck Shelves stays outside Art Hero's promoted full-page selector path and resets its own embedded native carousel to the measured row height; Art Hero itself is unchanged.
+
 ## [3.0.2] - 2026-07-10
 
 ### Added
@@ -22,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Obsidian hero-filter control moved out of Deck Shelves.** The plugin-specific setting and runtime override were removed; `Library Customization` now owns separate side-fade and bottom-fade controls, plus an independent native Home-filter override.
 - **Standardised iconography across Settings and the QAM.** Export uses an up-arrow, import a down-arrow, delete a trash can and restore its own icon (replacing the floppy); collapsible sections carry icons in every settings tab, and the QAM import/export icons match the config pages.
 
 ### Fixed

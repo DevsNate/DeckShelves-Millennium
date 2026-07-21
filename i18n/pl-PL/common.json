@@ -73,6 +73,7 @@
   "select_items_all": "Zaznacz wszystko",
   "global_game_info_above": "Pokaż informacje o grze nad kartami",
   "game_info_above_label": "Pokaż informacje o grze nad kartami",
+  "keep_shelves_stacked_label": "Zachowaj układ stosu Deck Shelves",
   "confirm_continue": "Kontynuuj",
   "couple_info_above_title": "Ukryć tytuł półki?",
   "couple_info_above_body": "Pokazywanie informacji o grze na górze korzysta z układu pełnoekranowego, w którym tytuł jest ukryty — więc tytuł półki również zostanie ukryty. Możesz go ponownie pokazać w dowolnej chwili.",

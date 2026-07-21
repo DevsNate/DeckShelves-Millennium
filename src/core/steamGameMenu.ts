@@ -11,7 +11,6 @@ import {
   dispatchShelfModal,
   clearOnlineShelfCache,
 } from "./shelfActions";
-import { saveFocusTarget } from "./focusRestore";
 import {
   buildDeckShelvesMenuItems as buildDeckShelvesMenuItemsBase,
   buildShelfContextMenu,
@@ -1129,6 +1128,38 @@ function pushIfAvailable(items: any[], R: any, MenuItem: any, key: string, label
   items.push(R.createElement(MenuItem, { key, onSelected: action, ...(extraProps ?? {}) }, label));
 }
 
+export function browseScreenshotsForApp(appid: number): boolean {
+  if (!Number.isFinite(appid) || appid <= 0) return false;
+  const url = `steam://open/screenshots/${appid}`;
+  // Current SteamUI opens client dialogs by navigating the owning BP window
+  // to a parameterised steam:// URL. This keeps the action in the same
+  // BrowserWindow as the context menu and works on Windows where the older
+  // Apps.BrowseScreenshotsForApp bridge can exist but silently no-op.
+  try {
+    const owner = getPreferredSteamWindow() as any;
+    if (owner?.location) {
+      owner.location.href = url;
+      return true;
+    }
+  } catch {}
+  // Compatibility fallbacks for Steam builds that still expose an explicit
+  // protocol or Apps bridge.
+  const sc: any = (globalThis as any).SteamClient;
+  try {
+    if (typeof sc?.Browser?.OpenSteamURL === "function") {
+      sc.Browser.OpenSteamURL(url);
+      return true;
+    }
+  } catch {}
+  try {
+    if (typeof sc?.Apps?.BrowseScreenshotsForApp === "function") {
+      sc.Apps.BrowseScreenshotsForApp(appid);
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
 type FallbackSpec = {
   key: string;
   labelKey: string;
@@ -1176,8 +1207,8 @@ const FALLBACK_SPECS: FallbackSpec[] = [
     key: "screenshots",
     labelKey: "menu_browse_screenshots",
     labelFallback: "Browse screenshots",
-    available: (sc) => typeof sc?.Apps?.BrowseScreenshotsForApp === "function",
-    action: (sc, _n, appid) => { try { sc?.Apps?.BrowseScreenshotsForApp?.(String(appid)); } catch {} },
+    available: () => true,
+    action: (_sc, _n, appid) => { browseScreenshotsForApp(appid); },
   },
   {
     key: "details",
@@ -1226,17 +1257,20 @@ function dflFallbackMenuLabel(overview: any, cardEl: HTMLElement | null): string
   return overview?.display_name || resolveCardLabelName(cardEl) || "Game";
 }
 
-function showDflFallbackMenu(appid: number, shelfId: string | undefined): void {
+function showDflFallbackMenu(appid: number, shelfId: string | undefined): boolean {
   try {
     const dfl = getDFL();
     const R = getSteamReact();
-    if (!hasDflMenuApi(dfl, R)) return;
+    if (!hasDflMenuApi(dfl, R)) return false;
     const anchor = findCardAnchor(appid);
     const cardEl = (anchor?.el ?? getSPDocument().activeElement) as HTMLElement;
     const overview = getAppStore()?.GetAppOverviewByAppID?.(appid);
     const items = buildDflFallbackItems(appid, shelfId, dfl, R, overview?.installed === true);
     dfl.showContextMenu(R.createElement(dfl.Menu, { label: dflFallbackMenuLabel(overview, cardEl) }, ...items), cardEl);
-  } catch {}
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function tryShowGameMenuLegacyWrapped(appid: number, shelfId?: string): boolean {
@@ -1251,10 +1285,17 @@ function tryShowGameMenuLegacyWrapped(appid: number, shelfId?: string): boolean 
 export function showGameMenu(appid: number, shelfId?: string): void {
   if (showGameMenuActive) return;
   showGameMenuActive = true;
-  // Native menu actions (Customize Artwork, Properties, …) bypass our
-  // onActivate, so save focus here for B-back restoration.
-  try { if (appid > 0) saveFocusTarget(appid, shelfId); } catch {}
   try {
+    /* A captured Steam application-menu component closes through router state
+       owned by its original native card. Millennium renders Deck Shelves from
+       a global home injection, so that owner is absent and dismissing the
+       captured menu throws while reading `owner.state`. Use the explicit menu
+       assembled from the same supported actions on Millennium; it owns its
+       lifecycle and closes without depending on native-card state. */
+    if ((globalThis as any).__DECK_SHELVES_MILLENNIUM__) {
+      showDflFallbackMenu(appid, shelfId);
+      return;
+    }
     if (isLegacyMenuFlow()) {
       if (tryShowGameMenuLegacyWrapped(appid, shelfId)) return;
     } else if (tryShowGameMenuNative(appid, shelfId)) {

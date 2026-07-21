@@ -23,7 +23,7 @@ const noop = () => {};
    hiding shelf-list titles and the EditShelfModal title input. This
    fallback renders both visibly with the standard Decky row layout so
    the plugin remains usable while Decky catches up. */
-import { createElement } from 'react';
+import { createElement, forwardRef } from 'react';
 
 function buildLabel(label: any, icon: any) {
   if (label == null) return null;
@@ -108,7 +108,28 @@ export const DialogCheckbox = decky.DialogCheckbox ?? passthroughComponent;
 export const Dropdown = decky.Dropdown ?? passthroughComponent;
 export const DropdownItem = decky.DropdownItem ?? decky.Dropdown ?? passthroughComponent;
 export const Field = decky.Field ?? fieldFallback;
-export const Focusable = decky.Focusable ?? passthroughComponent;
+const HostFocusable = decky.Focusable ?? passthroughComponent;
+
+/* Current Steam focus navigation accepts CSS-style flow names (`row` /
+   `column`). Deck Shelves 3.0.2 also uses Decky's older aliases
+   (`horizontal` / `vertical`) throughout its settings and modal surfaces.
+   Millennium passes those values straight into Steam, which asserts once per
+   affected Focusable and briefly tears down the focus tree while an error
+   boundary recovers it. Normalize at the host boundary so every imported
+   Decky surface gets the current Steam contract without rewriting the plugin
+   components or changing their intended direction. */
+export const Focusable = forwardRef((props: any, ref: any) => {
+  const flow = props?.['flow-children'];
+  const normalizedFlow = flow === 'vertical'
+    ? 'column'
+    : flow === 'horizontal'
+      ? 'row'
+      : flow;
+  const normalized = normalizedFlow === flow
+    ? props
+    : { ...props, 'flow-children': normalizedFlow };
+  return createElement(HostFocusable, { ...normalized, ref });
+});
 /* Runtime enum that Decky exposes via FooterLegend. Required for
    gamepad-button comparison in the local ReorderableList. Fallback keeps
    the numeric values stable (see @decky/ui FooterLegend.d.ts) so any

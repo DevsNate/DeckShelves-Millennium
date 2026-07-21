@@ -317,6 +317,16 @@ def test_sanitize_settings_global_gameInfoAbove():
     assert _sanitize_settings({}).get("globalGameInfoAbove") is False
 
 
+def test_sanitize_settings_keep_shelves_stacked_defaults_true():
+    result = _sanitize_settings({})
+    assert result["keepShelvesStacked"] is True
+
+
+def test_sanitize_settings_keep_shelves_stacked_preserves_opt_out():
+    result = _sanitize_settings({"keepShelvesStacked": False})
+    assert result["keepShelvesStacked"] is False
+
+
 # ─── hiddenAppIds in smart shelves ───────────────────────────────────────────
 
 def test_sanitize_settings_hiddenAppIds_smart_shelf():
@@ -700,3 +710,10 @@ def test_sanitize_qamHiddenToggles_drops_non_strings():
     assert "shelfHeroBackground" in qht
     assert 42 not in qht
     assert None not in qht
+
+
+def test_sanitize_new_home_visual_options_round_trip():
+    result = _sanitize_settings({
+        "fadeRecentsTitle": True,
+    })
+    assert result.get("fadeRecentsTitle") is True

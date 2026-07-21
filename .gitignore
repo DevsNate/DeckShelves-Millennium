@@ -1,6 +1,7 @@
 # Node
 node_modules/
 dist/
+.millennium/Dist/
 out/
 *.log
 .DS_Store

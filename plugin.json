@@ -1,19 +1,8 @@
 {
-  "name": "Deck Shelves",
-  "author": "Jonathan Santos",
-  "api_version": 1,
-  "flags": [],
-  "publish": {
-    "tags": [
-      "customization",
-      "library",
-      "home",
-      "shelves",
-      "collections",
-      "tabs",
-      "filters"
-    ],
-    "description": "Inject configurable shelves (Collections / Tabs / Filters) into the Steam Deck Home (library/home).",
-    "image": "https://raw.githubusercontent.com/santojon/Deck-Shelves/main/assets/home.png"
-  }
+  "$schema": "https://steambrew.app/schemas/plugin-schema.json",
+  "name": "deck-shelves",
+  "common_name": "Deck Shelves",
+  "description": "Configurable game shelves for Steam Big Picture Home.",
+  "version": "3.0.2",
+  "backendType": "lua"
 }

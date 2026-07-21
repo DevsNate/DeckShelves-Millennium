@@ -1,5 +1,5 @@
 
-import { call } from "../shims/decky-api";
+import { call } from "@decky/api";
 import { logInfo, logWarn } from "../runtime/logger";
 
 const WISHLIST_KEY = "ds-wishlist-cache-v1";

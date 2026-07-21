@@ -124,20 +124,20 @@ export function HeroBackground({ mountEl }: { mountEl: HTMLElement }) {
     // descendants restructure (focused card flips to featured, etc.).
     const mo = new MutationObserver(measure);
     mo.observe(mountEl, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-ds-recents-slot', 'class', 'style'] });
-    // The row's horizontal scroll moves the focused card — mirror it on the
-    // label so the alignment keeps up with `centeredScrollLeft` animations.
+    // Steam scrolls the inner ReactVirtualized grid, not the Deck Shelves
+    // wrapper. Capture descendant scroll events at the mount so the hero
+    // label follows the native animation and survives carousel replacement.
     const onRowScroll = () => {
       const focusedCard = mountEl.querySelector('.ds-shelf[data-ds-recents-slot="true"] .ds-card.gpfocus, .ds-shelf[data-ds-recents-slot="true"] .ds-card:focus') as HTMLElement | null;
       if (!focusedCard) return;
       const cardLeft = focusedCard.getBoundingClientRect().left;
       setLabelLeftPx(Math.max(0, Math.round(cardLeft)));
     };
-    const row = mountEl.querySelector('.ds-shelf[data-ds-recents-slot="true"] .ds-row-scroll') as HTMLElement | null;
-    if (row) row.addEventListener('scroll', onRowScroll, { passive: true });
+    mountEl.addEventListener('scroll', onRowScroll, { passive: true, capture: true });
     return () => {
       ro.disconnect();
       mo.disconnect();
-      if (row) row.removeEventListener('scroll', onRowScroll);
+      mountEl.removeEventListener('scroll', onRowScroll, { capture: true });
     };
   }, [needsHeroLabel, mountEl]);
 

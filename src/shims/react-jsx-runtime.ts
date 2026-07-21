@@ -1,6 +1,8 @@
 const JSXGlobal =
   (globalThis as any).SP_JSX ||
-  (globalThis as any).window?.SP_JSX;
+  (globalThis as any).SP_JSX_FACTORY ||
+  (globalThis as any).window?.SP_JSX ||
+  (globalThis as any).window?.SP_JSX_FACTORY;
 
 if (!JSXGlobal) {
   throw new Error("Deck Shelves: JSX runtime global is not available in the Deck runtime.");

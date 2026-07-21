@@ -10,6 +10,7 @@ import { showSyntheticCardMenu } from "../../core/syntheticCardMenu";
 import { resolveLocalImage, subscribeLocalImage } from "../../core/localImage";
 import { getCurrentSettings, saveSettings } from "../../store/settingsStore";
 import { patchShelfInSettings } from "../../domain/settings";
+import { millenniumCardNavKey } from "../../core/steamOSVersion";
 
 // Synthetic card — decoration / placeholder / gap slot.
 //
@@ -253,6 +254,7 @@ export function SyntheticCard({
   return (
     <Focusable
       ref={cardRef}
+      {...({ navKey: millenniumCardNavKey(item.shelfId, item.id) } as any)}
       className={`ds-card ds-card--synthetic${resolveShadowClass()}${nativeCardClass ? ` ${nativeCardClass}` : ""}`}
       focusClassName="gpfocus"
       onActivate={handleActivate}

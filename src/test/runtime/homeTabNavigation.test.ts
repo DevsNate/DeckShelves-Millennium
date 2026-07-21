@@ -1,0 +1,31 @@
+import { afterEach, describe, expect, it } from "vitest";
+import { restoreFocusNavigationWithin, suppressFocusNavigationWithin } from "../../runtime/homeTabNavigation";
+
+const owners: HTMLElement[] = [];
+
+afterEach(() => {
+  for (const owner of owners.splice(0)) restoreFocusNavigationWithin(owner);
+  delete (globalThis as any).FocusNavController;
+});
+
+describe("hidden Home tab navigation", () => {
+  it("suppresses and restores focusable nodes inside the hidden subtree", () => {
+    const tab = {} as HTMLElement;
+    const outside = {} as HTMLElement;
+    const owner = { contains: (element: HTMLElement) => element === tab } as HTMLElement;
+    owners.push(owner);
+    const tabNode = { m_element: tab, m_Properties: { focusable: true }, m_rgChildren: [] };
+    const outsideNode = { m_element: outside, m_Properties: { focusable: true }, m_rgChildren: [] };
+    const root = { m_rgChildren: [tabNode, outsideNode] };
+    (globalThis as any).FocusNavController = {
+      m_ActiveContext: { m_rgGamepadNavigationTrees: [{ m_Root: root }] },
+    };
+
+    suppressFocusNavigationWithin(owner);
+    expect(tabNode.m_Properties.focusable).toBe(false);
+    expect(outsideNode.m_Properties.focusable).toBe(true);
+
+    restoreFocusNavigationWithin(owner);
+    expect(tabNode.m_Properties.focusable).toBe(true);
+  });
+});

@@ -5,6 +5,8 @@
     "recentsReplaceSource": false,
     "hideHomeTabs": false,
     "shelfHeroBackground": false,
+    "keepShelvesStacked": true,
+    "fadeRecentsTitle": false,
     "globalMatchNativeSize": false,
     "globalHighlightFirst": false,
     "globalHighlightAll": false,

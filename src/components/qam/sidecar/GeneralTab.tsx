@@ -225,7 +225,7 @@ export function GeneralTab({ controller }: { controller: SettingsController }) {
           id='visual_global'
           icon={<WandIcon />}
           title={t('section_visual_global')}
-          count={[settings.globalMatchNativeSize, settings.globalHighlightFirst, settings.globalHighlightAll, (settings as any).globalHighlightRandom, (settings as any).globalEnableLogo, (settings as any).globalEnableIcon, (settings as any).globalEnableDescription, ((settings as any).globalDescriptionScale ?? 100) > 100, (settings as any).globalDescriptionBelowLogo, (settings as any).globalHeroEnabled, (settings as any).globalGameInfoAbove, (settings as any).globalFriendsPlayingOverlay, (settings as any).globalFriendsPlayingOverlayRecent, (settings as any).globalFullPageShelf, settings.globalHideShelfTitle, settings.globalHideGameNames, settings.globalHideStatusLine, settings.globalHideInstallIndicator, settings.globalHideNewBadge, (settings as any).globalHideDiscountBadge, settings.globalHideCompatIcons, settings.globalHideNonSteamBadge, settings.globalHideSeeMore, settings.globalHideRefreshCard, (settings as any).globalDedupeByName].filter(Boolean).length}
+          count={[settings.globalMatchNativeSize, settings.globalHighlightFirst, settings.globalHighlightAll, (settings as any).globalHighlightRandom, (settings as any).globalEnableLogo, (settings as any).globalEnableIcon, (settings as any).globalEnableDescription, ((settings as any).globalDescriptionScale ?? 100) > 100, (settings as any).globalDescriptionBelowLogo, (settings as any).globalHeroEnabled, settings.keepShelvesStacked !== false, settings.fadeRecentsTitle, (settings as any).globalGameInfoAbove, (settings as any).globalFriendsPlayingOverlay, (settings as any).globalFriendsPlayingOverlayRecent, (settings as any).globalFullPageShelf, settings.globalHideShelfTitle, settings.globalHideGameNames, settings.globalHideStatusLine, settings.globalHideInstallIndicator, settings.globalHideNewBadge, (settings as any).globalHideDiscountBadge, settings.globalHideCompatIcons, settings.globalHideNonSteamBadge, settings.globalHideSeeMore, settings.globalHideRefreshCard, (settings as any).globalDedupeByName].filter(Boolean).length}
           headerExtra={<SectionEyeButton id='visual_global' hidden={isSecHid('visual_global')} setHidden={(v) => setSecHid('visual_global', v)} t={t} />}
         >
           {row('globalMatchNativeSize', (
@@ -275,6 +275,12 @@ export function GeneralTab({ controller }: { controller: SettingsController }) {
           ))}
           {!lightMode && row('globalHeroEnabled', (
             <ToggleField label={t('global_hero_enabled' as any)} checked={(settings as any).globalHeroEnabled === true} onChange={(v: boolean) => void (actions as any).setGlobalHeroEnabled(v)} />
+          ))}
+          {row('keepShelvesStacked', (
+            <ToggleField label={t('keep_shelves_stacked_label' as any)} checked={settings.keepShelvesStacked !== false} onChange={(v: boolean) => void actions.setKeepShelvesStacked(v)} />
+          ))}
+          {row('fadeRecentsTitle', (
+            <ToggleField label={t('fade_recents_title' as any)} checked={settings.fadeRecentsTitle === true} onChange={(v: boolean) => void actions.setFadeRecentsTitle(v)} />
           ))}
           {row('globalGameInfoAbove', (
             <ToggleField label={t('global_game_info_above' as any)} checked={(settings as any).globalGameInfoAbove === true} onChange={(v: boolean) => applyGameInfoAboveToggle({ next: v, hideTitle: settings.globalHideShelfTitle === true, t, setGameInfoAbove: (x) => void (actions as any).setGlobalGameInfoAbove(x), setHideTitle: (x) => actions.setGlobalHideShelfTitle(x) })} />

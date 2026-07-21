@@ -34,6 +34,18 @@ describe('SettingsSchema globalHideShelfTitle', () => {
   })
 })
 
+describe('SettingsSchema globalMatchNativeSize', () => {
+  it('defaults new installs to the live native card size', () => {
+    const r = SettingsSchema.parse({})
+    expect(r.globalMatchNativeSize).toBe(true)
+  })
+
+  it('preserves an explicit compact-size opt-out', () => {
+    const r = SettingsSchema.parse({ globalMatchNativeSize: false })
+    expect(r.globalMatchNativeSize).toBe(false)
+  })
+})
+
 describe('SmartShelfSchema hideShelfTitle', () => {
   it('is optional and undefined when absent', () => {
     const r = SmartShelfSchema.parse({
@@ -52,6 +64,18 @@ describe('SmartShelfSchema hideShelfTitle', () => {
       hideShelfTitle: true,
     })
     expect(r.hideShelfTitle).toBe(true)
+  })
+})
+
+describe('SettingsSchema keepShelvesStacked', () => {
+  it('keeps all Deck Shelves rows stacked by default', () => {
+    const r = SettingsSchema.parse({})
+    expect(r.keepShelvesStacked).toBe(true)
+  })
+
+  it('preserves an explicit opt-out', () => {
+    const r = SettingsSchema.parse({ keepShelvesStacked: false })
+    expect(r.keepShelvesStacked).toBe(false)
   })
 })
 

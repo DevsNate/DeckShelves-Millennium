@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { createPortal } from "react-dom";
 import { ShelfView } from "./Shelf";
 import { DebugOverlay } from "./DebugOverlay";
 import { isDebugOverlayEnabled } from "../runtime/debugOverlay";
@@ -10,24 +9,21 @@ import { useContainerDragReorder } from "../core/reorder";
 import { PlatformProvider } from "../runtime/platformContext";
 import { createDeckyPlatform } from "../runtime/deckyPlatform";
 import { logInfo, logWarn } from "../runtime/logger";
-import { logDiagnostic } from "../runtime/diagnostics";
-import { getPreferredSteamDocument, getPreferredSteamWindow, getAllSteamDocuments } from "../runtime/steamHost";
-import { ROOT_ID, seededShuffle, isHomeRoute, hasHomeDomSignals, detectNavTreeApi, findOrCreateMount } from "./home/mountUtils";
-import { applyHideRecents, reapplyHomeHides, applyHideHomeTabs, getMountFailed } from "../runtime/homePatch";
+import { getPreferredSteamDocument, getAllSteamDocuments } from "../runtime/steamHost";
+import { ROOT_ID, seededShuffle } from "./home/mountUtils";
+import { applyHideRecents, applyHideHomeTabs, getMountFailed } from "../runtime/homePatch";
 import { getRecentsReplaceFailed, subscribeRecentsReplaceFailed, isRecentsReplaceInjecting, subscribeRecentsReplaceInjecting, getRecentsReplaceActiveShelfId } from "../runtime/recentsReplace";
 import { Focusable } from "../runtime/host/decky";
 import { installPassiveMenuHook, installPassiveShowContextMenuHook, installLibraryContextMenuPatch, installCreateContextMenuPatch } from "../core/steamGameMenu";
-import { tryRestoreFocus, hasPendingFocus, beginFocusRestoreLoop, focusElement } from "../core/focusRestore";
-import { focusNativeRecentsFirstCard, findNativeRecentsEl } from "../features/sidenav/ShelfSideNav";
-import { patchShelfEdgeNavigation, patchMenuButton, installVerticalFocusBridge, reparentNavTreeNodes } from "./home/navPatches";
+import { patchMenuButton } from "./home/navPatches";
 import { triggerShelfRefresh } from "../core/shelfRefresh";
-import { bumpAssetRevision } from "../core/assetRevision";
 import { pickFirstVisibleShelfId, interleaveSmartShelves } from "../domain/shelfOrder";
 import { isInVisibilityWindow, nextVisibilityBoundary, getModeVisibilityWindows, invalidateSmartShelfCache } from "../steam/smartShelves";
-import { flowChildrenProps } from "../core/steamOSVersion";
+import { flowChildrenProps, isMillenniumNavigationRuntime } from "../core/steamOSVersion";
 import { isCssLoaderActive, getNativeRecentsClassName, isArtHeroActive, isNoHeroGradientActive, isHeroFullscreenActive, isNoHomeTextActive, isFocusRoundCompatActive, isTiltedHomeActive, getTiltedHomeMode } from "../core/cssLoaderDetect";
 import { BadgeFocusOverlay } from "./shelf/BadgeFocusOverlay";
 import { FriendsAvatarOverlay } from "./shelf/FriendsAvatarOverlay";
+import { installRecentsTitleFade } from "../core/recentsTitleFade";
 
 const homePlatform = createDeckyPlatform();
 
@@ -43,171 +39,10 @@ export function HomeShelves() {
   const { t } = useTranslation();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [mountEl, setMountEl] = useState<HTMLElement | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-
-    /* Debounce mount removal: a brief route-detector failure (e.g. getPreferredSteamWindow
-       returns a window whose location isn't settled yet) would immediately unmount the portal
-       and flash native recents. Wait 600 ms before actually removing — if home becomes
-       visible again within the window, cancel the removal. Additive only; no impact on 3.7. */
-    let removeTimer: ReturnType<typeof setTimeout> | null = null;
-    const updateMount = () => {
-      if (!alive) return;
-      const homeVisible = isHomeRoute() || hasHomeDomSignals();
-      if (!homeVisible) {
-        if (!removeTimer) {
-          removeTimer = setTimeout(() => {
-            removeTimer = null;
-            if (!alive) return;
-            if (!isHomeRoute() && !hasHomeDomSignals()) {
-              setMountEl(null);
-              getPreferredSteamDocument().getElementById(ROOT_ID)?.remove();
-            }
-          }, 600);
-        }
-        return;
-      }
-      if (removeTimer) { clearTimeout(removeTimer); removeTimer = null; }
-      const el = findOrCreateMount();
-      if (el) setMountEl(el);
-    };
-
-    updateMount();
-    const doc = getPreferredSteamDocument();
-    const win = getPreferredSteamWindow();
-    /* Observe every known Steam doc — when preferredSteamWindow points at
-       SharedJSContext and Steam blows away our mount from the BigPicture
-       body, a single observer on `preferred.body` never fires. Watching each
-       doc body lets updateMount re-create the mount in the same animation
-       frame instead of waiting up to 2 s for the setInterval fallback. */
-    const observers: MutationObserver[] = [];
-    const observedDocs = new Set<Document>();
-    const observeDoc = (d: Document | null | undefined) => {
-      if (!d || observedDocs.has(d) || !d.body) return;
-      observedDocs.add(d);
-      const o = new MutationObserver(updateMount);
-      o.observe(d.body, { childList: true, subtree: true });
-      observers.push(o);
-    };
-    observeDoc(doc);
-    for (const d of getAllSteamDocuments()) observeDoc(d);
-
-    // State-divergence poll (2 s): when Steam re-renders the home DOM (B from
-    // library, route swap via SteamClient APIs that bypass history events,
-    /* etc.), the fresh native recents / home tabs arrive WITHOUT our hides.
-       History-event listeners miss those swaps. A MutationObserver on the
-       mount's parent fires on every D-pad mutation and cascades. This poll
-       is the smallest middle ground: cheap state read, only re-applies when
-       the actual DOM contradicts the desired hide state. */
-    const checkHidden = () => {
-      try {
-        const m = doc.getElementById(ROOT_ID) ?? getAllSteamDocuments().map((dd) => dd.getElementById(ROOT_ID)).find(Boolean);
-        if (!m) return;
-        const parent = (m as HTMLElement).parentElement;
-        if (!parent) return;
-        let recentsVisible = false;
-        let tabsVisible = false;
-        for (const child of Array.from(parent.children) as HTMLElement[]) {
-          if (child === m) continue;
-          if (child.offsetHeight <= 8) continue;
-          if (child.querySelector('[role="tablist"]')) { tabsVisible = true; continue; }
-          recentsVisible = true;
-        }
-        if (recentsVisible || tabsVisible) reapplyHomeHides();
-      } catch {}
-    };
-    /* Tight poll (250 ms) cures the flicker the user sees when dpad-up
-       briefly unhides the native recents shelf — at 2 s the recents
-       element stayed visible long enough to be obvious; 250 ms is below
-       the eye's flicker-fusion threshold for a Steam-render bounce. */
-    const hideStatePoll = window.setInterval(checkHidden, 250);
-    // Also re-check on every focus change inside the home — Steam tends
-    // to rebuild parts of the tree when focus crosses the DS root edge.
-    const onFocusChange = () => { checkHidden(); };
-    doc.addEventListener('focusin', onFocusChange, true);
-    doc.addEventListener('focusout', onFocusChange, true);
-
-    // Short fallback covers SPA pushState navigation (library → home) that does
-    // not fire popstate/hashchange and may not trigger body subtree mutations.
-    const timer = window.setInterval(updateMount, 2000);
-    win.addEventListener("hashchange", updateMount);
-    win.addEventListener("popstate", updateMount);
-
-    // Patch history.pushState/replaceState so SPA navigations synchronously
-    /* trigger updateMount (no 2s fallback wait when returning to home).
-       HomeShelves only mounts while on the home route, so wasOnHome is always true
-       at effect run time. If isHomeRoute() fails briefly (window not settled yet on
-       restart), wasOnHome=false would cause onRouteChange to fire triggerShelfRefresh
-       immediately — the "strange reload" the user sees after Steam restart. */
-    let wasOnHome = true;
-    const onRouteChange = () => {
-      const nowOnHome = isHomeRoute();
-      if (nowOnHome && !wasOnHome) {
-        updateMount();
-        /* Bump asset revision + force a shelf resolve so any custom
-           artwork the user replaced off-screen flushes through the
-           `?c=<rev>` cache buster on /customimages/ paths. The resolve
-           is debounced by shelfRefresh's existing throttle. */
-        try { bumpAssetRevision(); } catch {}
-        try { triggerShelfRefresh(); } catch {}
-        // No triggerShelfRefresh here — B-return shouldn't force a
-        /* global online re-fetch.
-           Steam re-renders BOTH native recents AND home tabs on every route
-           entry back to home (B from library, etc.). The freshly mounted
-           siblings arrive without our hides, so they flash back into view.
-           Re-apply both hide states so they collapse again before the next paint. */
-        try { reapplyHomeHides(); } catch {}
-        // Steam restores the previously-focused DS card on B-return, but the
-        // mount's scroll container can be at the top — the focused card is
-        /* in view only after the user moves the D-pad once. Sync the
-           viewport so it's visible immediately. Uses `block:'nearest'` —
-           NOT `'center'` — so an already-visible card (e.g. the first card
-           near the top) is left exactly where it is. `'center'` would
-           re-center it and visibly scroll the viewport down. */
-        const syncScroll = () => {
-          try {
-            const liveMount = getPreferredSteamDocument().getElementById(ROOT_ID);
-            const focused = liveMount?.querySelector('.gpfocus, .deck-shelves-root *:focus') as HTMLElement | null;
-            if (focused) {
-              focused.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' as ScrollBehavior });
-            }
-          } catch {}
-        };
-        for (const d of [150, 400, 800]) setTimeout(syncScroll, d);
-      }
-      wasOnHome = nowOnHome;
-    };
-    const hist = (win as any).history;
-    const origPush = hist?.pushState;
-    const origReplace = hist?.replaceState;
-    if (typeof origPush === "function") {
-      hist.pushState = function (...args: any[]) { const r = origPush.apply(this, args); onRouteChange(); return r; };
-    }
-    if (typeof origReplace === "function") {
-      hist.replaceState = function (...args: any[]) { const r = origReplace.apply(this, args); onRouteChange(); return r; };
-    }
-    win.addEventListener("popstate", onRouteChange);
-    win.addEventListener("hashchange", onRouteChange);
-
-    return () => {
-      alive = false;
-      for (const o of observers) { try { o.disconnect(); } catch {} }
-      window.clearInterval(timer);
-      window.clearInterval(hideStatePoll);
-      try { doc.removeEventListener('focusin', onFocusChange, true); } catch {}
-      try { doc.removeEventListener('focusout', onFocusChange, true); } catch {}
-      win.removeEventListener("hashchange", updateMount);
-      win.removeEventListener("popstate", updateMount);
-      win.removeEventListener("popstate", onRouteChange);
-      win.removeEventListener("hashchange", onRouteChange);
-      try { if (origPush && hist.pushState !== origPush) hist.pushState = origPush; } catch {}
-      try { if (origReplace && hist.replaceState !== origReplace) hist.replaceState = origReplace; } catch {}
-      if (removeTimer) { clearTimeout(removeTimer); removeTimer = null; }
-      // Remove the mount from every doc we may have created it in, not just preferred.
-      for (const d of observedDocs) { try { d.getElementById(ROOT_ID)?.remove(); } catch {} }
-    };
+  const inlineMountRef = useCallback((node: HTMLDivElement | null) => {
+    setMountEl(node);
   }, []);
+
 
   useEffect(() => {
     if (!mountEl) return;
@@ -235,35 +70,6 @@ export function HomeShelves() {
       delete mountEl.dataset.deckShelvesRenderer;
     };
   }, [mountEl]);
-
-  // Issue #68: restore focus to the native recents shelf when the plugin is
-  // disabled while focus is inside DS shelves — otherwise focus disappears
-  // and the user must navigate blindly.
-  const prevEnabledRef = useRef(settings?.enabled);
-  useEffect(() => {
-    if (!settings) return;
-    if (prevEnabledRef.current === true && settings.enabled === false) {
-      try {
-        /* Sweep every known Steam doc — preferred may point at SharedJSContext
-           while the visual native recents lives in BigPic. Case-insensitive
-           attribute match catches PT-BR "Jogados Recentemente" /
-           "Adicionados Recentemente" alongside the older "Jogos recentes". */
-        const docs = [getPreferredSteamDocument(), ...getAllSteamDocuments()];
-        let native: HTMLElement | null = null;
-        const seen = new Set<Document>();
-        for (const dc of docs) {
-          if (!dc || seen.has(dc)) continue;
-          seen.add(dc);
-          native = dc.querySelector(
-            '[aria-label*="recentes" i] .Focusable, [aria-label*="recente" i] .Focusable, [aria-label*="recent" i] .Focusable, [role="list"] .Panel.Focusable'
-          ) as HTMLElement | null;
-          if (native) break;
-        }
-        if (native) focusElement(native);
-      } catch {}
-    }
-    prevEnabledRef.current = settings.enabled;
-  }, [settings?.enabled]);
 
   /* Apply hideRecents — only actually hide when the plugin is enabled and has
      visible shelves.  Otherwise force recents visible regardless of the toggle
@@ -305,26 +111,6 @@ export function HomeShelves() {
     const canHide = settings?.enabled && settings?.hideRecents === true
       && hasAnyVisible && !replaceActive;
     applyHideRecents(canHide === true);
-    // When recents are hidden, remove them from the gamepad navigation tree so
-    // the D-pad skips straight to our shelves.  We keep the DOM intact (visibility:
-    // hidden) so we can still read native classes, hero images, etc.
-    if (mountEl) {
-      const recentsEl = mountEl.previousElementSibling as HTMLElement | null;
-      if (recentsEl) {
-        const focusables = recentsEl.querySelectorAll<HTMLElement>('[tabindex], button, a, input, [role="button"]');
-        for (const el of Array.from(focusables)) {
-          if (canHide) {
-            if (!el.dataset.dsPrevTabindex) el.dataset.dsPrevTabindex = el.getAttribute('tabindex') ?? '0';
-            el.setAttribute('tabindex', '-1');
-          } else if (el.dataset.dsPrevTabindex !== undefined) {
-            el.setAttribute('tabindex', el.dataset.dsPrevTabindex);
-            delete el.dataset.dsPrevTabindex;
-          }
-        }
-        if (canHide) recentsEl.setAttribute('aria-hidden', 'true');
-        else recentsEl.removeAttribute('aria-hidden');
-      }
-    }
   }, [settings?.hideRecents, settings?.enabled, settings?.shelves, settings?.smartShelvesEnabled, settings?.smartShelves, settings?.recentsReplaceSource, mountEl, replaceKillSwitch]);
 
   // Apply hideHomeTabs — no suppression criteria, simple toggle. If no sibling
@@ -364,13 +150,24 @@ export function HomeShelves() {
     return () => window.clearTimeout(t);
   }, [settings?.smartShelvesEnabled, smartList, visibilityTick]);
 
-  if (!mountEl) return null;
-  if (!settings) return null;
+  const inlineHost = (children?: any) => (
+    <div
+      id={ROOT_ID}
+      ref={inlineMountRef}
+      data-deck-shelves-native-mount="1"
+      style={{ width: "100%", display: "block", position: "relative", zIndex: 0, margin: "0 0 24px", padding: "0 0 8px" }}
+    >
+      {children}
+    </div>
+  );
+
+  if (!mountEl) return inlineHost();
+  if (!settings) return inlineHost();
 
   // Crash protection: don't attempt to render if mounting has failed
   if (getMountFailed()) {
     logWarn("HOME", "mount failed — skipping render");
-    return null;
+    return inlineHost();
   }
 
   const visibleShelves = (settings.shelves ?? []).filter((s) => s.enabled && !s.hidden);
@@ -518,139 +315,37 @@ export function HomeShelves() {
   if (!settings.enabled || !visibleShelves.length) {
     applyHideRecents(false);
     if (!settings.enabled) logWarn("HOME", "plugin disabled — recents forced visible");
-    return null;
+    return inlineHost();
   }
-  logInfo("HOME", "rendering shelves via portal", { visible: shelves.length, mountConnected: mountEl.isConnected });
+  logInfo("HOME", "rendering shelves in native Home tree", { visible: shelves.length, mountConnected: mountEl.isConnected });
 
-  return createPortal(
+  const content = (
     <PlatformProvider platform={homePlatform}>
-      <ShelvesContainer mountEl={mountEl} shelves={shelves} globalMatchNativeSize={settings.globalMatchNativeSize === true} globalHighlightFirst={settings.globalHighlightFirst === true} globalHighlightAll={settings.globalHighlightAll === true} globalHighlightRandom={(settings as any).globalHighlightRandom === true} globalHideStatusLine={settings.globalHideStatusLine === true} globalHideNewBadge={settings.globalHideNewBadge === true} globalHideDiscountBadge={(settings as any).globalHideDiscountBadge === true} globalHideCompatIcons={settings.globalHideCompatIcons === true} globalHideNonSteamBadge={settings.globalHideNonSteamBadge === true} globalHideShelfTitle={settings.globalHideShelfTitle === true} globalHideGameNames={settings.globalHideGameNames === true} globalHideInstallIndicator={settings.globalHideInstallIndicator === true} globalHideSeeMore={settings.globalHideSeeMore === true} globalHideRefreshCard={settings.globalHideRefreshCard === true} globalDedupeByName={(settings as any).globalDedupeByName === true} globalHeroEnabled={(settings as any).globalHeroEnabled === true} globalGameInfoAbove={(settings as any).globalGameInfoAbove === true} globalFriendsPlayingOverlay={(settings as any).globalFriendsPlayingOverlay === true} globalFriendsPlayingOverlayRecent={(settings as any).globalFriendsPlayingOverlayRecent === true} globalEnableLogo={(settings as any).globalEnableLogo === true} globalEnableIcon={(settings as any).globalEnableIcon === true} globalEnableDescription={(settings as any).globalEnableDescription === true} globalDescriptionBelowLogo={(settings as any).globalDescriptionBelowLogo === true} globalLogoBelowShelf={(settings as any).globalLogoBelowShelf === true} globalLogoPosition={(((settings as any).globalLogoPosition === 'center' || (settings as any).globalLogoPosition === 'right') ? (settings as any).globalLogoPosition : 'left')} globalDescriptionPosition={(((settings as any).globalDescriptionPosition === 'center' || (settings as any).globalDescriptionPosition === 'right') ? (settings as any).globalDescriptionPosition : 'left')} globalLogoSize={(typeof (settings as any).globalLogoSize === 'number' ? Math.max(50, Math.min(200, (settings as any).globalLogoSize)) : 100)} globalLogoTopOffset={(typeof (settings as any).globalLogoTopOffset === 'number' ? Math.max(0, Math.min(100, (settings as any).globalLogoTopOffset)) : 20)} globalFullPageShelf={(settings as any).globalFullPageShelf === true} globalIconVerticalAlign={(settings as any).globalIconVerticalAlign} globalShelfTitlePosition={(settings as any).globalShelfTitlePosition} globalGameNamePosition={(settings as any).globalGameNamePosition} globalPlaytimePosition={(settings as any).globalPlaytimePosition} globalDescriptionHeight={(settings as any).globalDescriptionHeight} shelfHeroBackground={settings.hideRecents === true && settings.shelfHeroBackground === true && !(replaceInjecting && !replaceKillSwitch)} perShelfHeroAllowed={!(replaceInjecting && !replaceKillSwitch)} hideRecentsSetting={settings.hideRecents === true && (settings.recentsReplaceSource !== true || replaceKillSwitch)} forceCssLoaderThemes={settings.forceCssLoaderThemes === true} interleaveSmart={interleaveSmart} />
+      <ShelvesContainer mountEl={mountEl} shelves={shelves} globalMatchNativeSize={settings.globalMatchNativeSize === true} globalHighlightFirst={settings.globalHighlightFirst === true} globalHighlightAll={settings.globalHighlightAll === true} globalHighlightRandom={(settings as any).globalHighlightRandom === true} globalHideStatusLine={settings.globalHideStatusLine === true} globalHideNewBadge={settings.globalHideNewBadge === true} globalHideDiscountBadge={(settings as any).globalHideDiscountBadge === true} globalHideCompatIcons={settings.globalHideCompatIcons === true} globalHideNonSteamBadge={settings.globalHideNonSteamBadge === true} globalHideShelfTitle={settings.globalHideShelfTitle === true} globalHideGameNames={settings.globalHideGameNames === true} globalHideInstallIndicator={settings.globalHideInstallIndicator === true} globalHideSeeMore={settings.globalHideSeeMore === true} globalHideRefreshCard={settings.globalHideRefreshCard === true} globalDedupeByName={(settings as any).globalDedupeByName === true} globalHeroEnabled={(settings as any).globalHeroEnabled === true} globalGameInfoAbove={(settings as any).globalGameInfoAbove === true} globalFriendsPlayingOverlay={(settings as any).globalFriendsPlayingOverlay === true} globalFriendsPlayingOverlayRecent={(settings as any).globalFriendsPlayingOverlayRecent === true} globalEnableLogo={(settings as any).globalEnableLogo === true} globalEnableIcon={(settings as any).globalEnableIcon === true} globalEnableDescription={(settings as any).globalEnableDescription === true} globalDescriptionBelowLogo={(settings as any).globalDescriptionBelowLogo === true} globalLogoBelowShelf={(settings as any).globalLogoBelowShelf === true} globalLogoPosition={(((settings as any).globalLogoPosition === 'center' || (settings as any).globalLogoPosition === 'right') ? (settings as any).globalLogoPosition : 'left')} globalDescriptionPosition={(((settings as any).globalDescriptionPosition === 'center' || (settings as any).globalDescriptionPosition === 'right') ? (settings as any).globalDescriptionPosition : 'left')} globalLogoSize={(typeof (settings as any).globalLogoSize === 'number' ? Math.max(50, Math.min(200, (settings as any).globalLogoSize)) : 100)} globalLogoTopOffset={(typeof (settings as any).globalLogoTopOffset === 'number' ? Math.max(0, Math.min(100, (settings as any).globalLogoTopOffset)) : 20)} globalFullPageShelf={(settings as any).globalFullPageShelf === true} keepShelvesStacked={settings.keepShelvesStacked !== false} globalIconVerticalAlign={(settings as any).globalIconVerticalAlign} globalShelfTitlePosition={(settings as any).globalShelfTitlePosition} globalGameNamePosition={(settings as any).globalGameNamePosition} globalPlaytimePosition={(settings as any).globalPlaytimePosition} globalDescriptionHeight={(settings as any).globalDescriptionHeight} shelfHeroBackground={settings.hideRecents === true && settings.shelfHeroBackground === true && !(replaceInjecting && !replaceKillSwitch)} perShelfHeroAllowed={!(replaceInjecting && !replaceKillSwitch)} hideRecentsSetting={settings.hideRecents === true && (settings.recentsReplaceSource !== true || replaceKillSwitch)} forceCssLoaderThemes={settings.forceCssLoaderThemes === true} fadeRecentsTitle={settings.fadeRecentsTitle === true} interleaveSmart={interleaveSmart} />
       {isDebugOverlayEnabled(settings) ? <DebugOverlay mountEl={mountEl} shelves={shelves} /> : null}
-    </PlatformProvider>,
-    mountEl,
-  ) as any;
+    </PlatformProvider>
+  );
+  return inlineHost(content);
 }
 
-function ShelvesContainer({ mountEl, shelves, globalMatchNativeSize = false, globalHighlightFirst = false, globalHighlightAll = false, globalHighlightRandom = false, globalHideStatusLine = false, globalHideNewBadge = false, globalHideDiscountBadge = false, globalHideCompatIcons = false, globalHideNonSteamBadge = false, globalHideShelfTitle = false, globalHideGameNames = false, globalHideInstallIndicator = false, globalHideSeeMore = false, globalHideRefreshCard = false, globalDedupeByName = false, globalHeroEnabled = false, globalGameInfoAbove = false, globalFriendsPlayingOverlay = false, globalFriendsPlayingOverlayRecent = false, globalEnableLogo = false, globalEnableIcon = false, globalEnableDescription = false, globalDescriptionBelowLogo = false, globalLogoBelowShelf = false, globalLogoPosition = 'left', globalDescriptionPosition = 'left', globalLogoSize = 100, globalLogoTopOffset = 20, globalFullPageShelf = false, globalIconVerticalAlign, globalShelfTitlePosition, globalGameNamePosition, globalPlaytimePosition, globalDescriptionHeight, shelfHeroBackground = false, perShelfHeroAllowed = false, hideRecentsSetting = false, forceCssLoaderThemes = false, interleaveSmart = false }: { mountEl: HTMLElement; shelves: any[]; globalMatchNativeSize?: boolean; globalHighlightFirst?: boolean; globalHighlightAll?: boolean; globalHighlightRandom?: boolean; globalHideStatusLine?: boolean; globalHideNewBadge?: boolean; globalHideDiscountBadge?: boolean; globalHideCompatIcons?: boolean; globalHideNonSteamBadge?: boolean; globalHideShelfTitle?: boolean; globalHideGameNames?: boolean; globalHideInstallIndicator?: boolean; globalHideSeeMore?: boolean; globalHideRefreshCard?: boolean; globalDedupeByName?: boolean; globalHeroEnabled?: boolean; globalGameInfoAbove?: boolean; globalFriendsPlayingOverlay?: boolean; globalFriendsPlayingOverlayRecent?: boolean; globalEnableLogo?: boolean; globalEnableIcon?: boolean; globalEnableDescription?: boolean; globalDescriptionBelowLogo?: boolean; globalLogoBelowShelf?: boolean; globalLogoPosition?: 'left' | 'center' | 'right'; globalDescriptionPosition?: 'left' | 'center' | 'right'; globalLogoSize?: number; globalLogoTopOffset?: number; globalFullPageShelf?: boolean; globalIconVerticalAlign?: 'top' | 'center' | 'bottom' | null; globalShelfTitlePosition?: 'left' | 'center' | 'right' | null; globalGameNamePosition?: 'left' | 'center' | 'right' | null; globalPlaytimePosition?: 'left' | 'center' | 'right' | null; globalDescriptionHeight?: number | null; shelfHeroBackground?: boolean; perShelfHeroAllowed?: boolean; hideRecentsSetting?: boolean; forceCssLoaderThemes?: boolean; interleaveSmart?: boolean }) {
+function ShelvesContainer({ mountEl, shelves, globalMatchNativeSize = false, globalHighlightFirst = false, globalHighlightAll = false, globalHighlightRandom = false, globalHideStatusLine = false, globalHideNewBadge = false, globalHideDiscountBadge = false, globalHideCompatIcons = false, globalHideNonSteamBadge = false, globalHideShelfTitle = false, globalHideGameNames = false, globalHideInstallIndicator = false, globalHideSeeMore = false, globalHideRefreshCard = false, globalDedupeByName = false, globalHeroEnabled = false, globalGameInfoAbove = false, globalFriendsPlayingOverlay = false, globalFriendsPlayingOverlayRecent = false, globalEnableLogo = false, globalEnableIcon = false, globalEnableDescription = false, globalDescriptionBelowLogo = false, globalLogoBelowShelf = false, globalLogoPosition = 'left', globalDescriptionPosition = 'left', globalLogoSize = 100, globalLogoTopOffset = 20, globalFullPageShelf = false, keepShelvesStacked = true, globalIconVerticalAlign, globalShelfTitlePosition, globalGameNamePosition, globalPlaytimePosition, globalDescriptionHeight, shelfHeroBackground = false, perShelfHeroAllowed = false, hideRecentsSetting = false, forceCssLoaderThemes = false, fadeRecentsTitle = false, interleaveSmart = false }: { mountEl: HTMLElement; shelves: any[]; globalMatchNativeSize?: boolean; globalHighlightFirst?: boolean; globalHighlightAll?: boolean; globalHighlightRandom?: boolean; globalHideStatusLine?: boolean; globalHideNewBadge?: boolean; globalHideDiscountBadge?: boolean; globalHideCompatIcons?: boolean; globalHideNonSteamBadge?: boolean; globalHideShelfTitle?: boolean; globalHideGameNames?: boolean; globalHideInstallIndicator?: boolean; globalHideSeeMore?: boolean; globalHideRefreshCard?: boolean; globalDedupeByName?: boolean; globalHeroEnabled?: boolean; globalGameInfoAbove?: boolean; globalFriendsPlayingOverlay?: boolean; globalFriendsPlayingOverlayRecent?: boolean; globalEnableLogo?: boolean; globalEnableIcon?: boolean; globalEnableDescription?: boolean; globalDescriptionBelowLogo?: boolean; globalLogoBelowShelf?: boolean; globalLogoPosition?: 'left' | 'center' | 'right'; globalDescriptionPosition?: 'left' | 'center' | 'right'; globalLogoSize?: number; globalLogoTopOffset?: number; globalFullPageShelf?: boolean; keepShelvesStacked?: boolean; globalIconVerticalAlign?: 'top' | 'center' | 'bottom' | null; globalShelfTitlePosition?: 'left' | 'center' | 'right' | null; globalGameNamePosition?: 'left' | 'center' | 'right' | null; globalPlaytimePosition?: 'left' | 'center' | 'right' | null; globalDescriptionHeight?: number | null; shelfHeroBackground?: boolean; perShelfHeroAllowed?: boolean; hideRecentsSetting?: boolean; forceCssLoaderThemes?: boolean; fadeRecentsTitle?: boolean; interleaveSmart?: boolean }) {
   useEffect(() => {
-    // One-time nav tree API detection — result surfaced in About > Diagnostics
-    const navApi = detectNavTreeApi();
-    logDiagnostic(
-      navApi.available ? 'info' : 'warn',
-      navApi.available ? 'Gamepad nav tree API available' : 'Gamepad nav tree API unavailable',
-      navApi.detail,
-    );
-
-    /* Apply idempotent patches (menu/edge/bridge) on every mount-subtree
-       mutation. Reparent runs independently with its own triggers because
-       Steam can rebuild our nav node's parent without touching our DOM
-       subtree (e.g. when native home re-registers focusables around us). */
-    const applyPatches = () => {
-      // Per-install try/catch: a single shared try would silently drop
-      // every later install on the first failure (regression seen with
-      // installLibraryContextMenuPatch, the menu-injection entry point).
-      try { reparentNavTreeNodes(mountEl); } catch (e) { logInfo("HOME", "reparentNavTreeNodes failed", String(e)); }
-      try { patchShelfEdgeNavigation(mountEl); } catch (e) { logInfo("HOME", "patchShelfEdgeNavigation failed", String(e)); }
-      try { patchMenuButton(); } catch (e) { logInfo("HOME", "patchMenuButton failed", String(e)); }
-      try { installVerticalFocusBridge(mountEl); } catch (e) { logInfo("HOME", "installVerticalFocusBridge failed", String(e)); }
-      try { installPassiveMenuHook(); } catch (e) { logInfo("HOME", "installPassiveMenuHook failed", String(e)); }
-      try { installPassiveShowContextMenuHook(); } catch (e) { logInfo("HOME", "installPassiveShowContextMenuHook failed", String(e)); }
-      try { installLibraryContextMenuPatch(); } catch (e) { logInfo("HOME", "installLibraryContextMenuPatch failed", String(e)); }
-      try { installCreateContextMenuPatch(); } catch (e) { logInfo("HOME", "installCreateContextMenuPatch failed", String(e)); }
-      try { tryRestoreFocus(); } catch (e) { logInfo("HOME", "tryRestoreFocus failed", String(e)); }
-    };
-    const reparentOnly = () => {
-      try { reparentNavTreeNodes(mountEl); } catch (e) { logInfo("HOME", "reparentOnly failed", String(e)); }
-    };
-
-    applyPatches();
-    if (hasPendingFocus()) beginFocusRestoreLoop();
-
-    // rAF-throttle the high-frequency callers so applyPatches runs
-    // at most once per frame instead of per-mutation.
-    let applyPending: number | null = null;
-    const scheduleApplyPatches = () => {
-      if (applyPending != null) return;
-      applyPending = requestAnimationFrame(() => {
-        applyPending = null;
-        applyPatches();
-      });
-    };
-    let reparentPending: number | null = null;
-    const scheduleReparentOnly = () => {
-      if (reparentPending != null) return;
-      reparentPending = requestAnimationFrame(() => {
-        reparentPending = null;
-        reparentOnly();
-      });
-    };
-
-    // Menu-class chunk arrives async on cold boot; retries here cover
-    // the window before the chunk loader registers it.
-    const menuPatchRetries = [400, 1000, 2000, 4000, 8000, 15000];
-    const menuRetryTimers: ReturnType<typeof setTimeout>[] = [];
-    const tryInstall = () => {
+    try { patchMenuButton(); } catch (e) { logInfo("HOME", "patchMenuButton failed", String(e)); }
+    try { installPassiveMenuHook(); } catch (e) { logInfo("HOME", "installPassiveMenuHook failed", String(e)); }
+    try { installPassiveShowContextMenuHook(); } catch (e) { logInfo("HOME", "installPassiveShowContextMenuHook failed", String(e)); }
+    try { installLibraryContextMenuPatch(); } catch (e) { logInfo("HOME", "installLibraryContextMenuPatch failed", String(e)); }
+    try { installCreateContextMenuPatch(); } catch (e) { logInfo("HOME", "installCreateContextMenuPatch failed", String(e)); }
+    const retries = [400, 1000, 2000, 4000, 8000, 15000].map((delay) => setTimeout(() => {
       try { installLibraryContextMenuPatch(); } catch {}
       try { installCreateContextMenuPatch(); } catch {}
-    };
-    for (const d of menuPatchRetries) {
-      menuRetryTimers.push(setTimeout(tryInstall, d));
-    }
-    // prewarmMenuExtraction was removed (opened a real menu on boot).
-    // Extraction now happens lazily on the first user MENU press.
+    }, delay));
+    return () => { for (const timer of retries) clearTimeout(timer); };
+  }, []);
 
-    // Observer 1: mutations inside our mount (shelf render, collapse/expand)
-    const obs = new MutationObserver(scheduleApplyPatches);
-    obs.observe(mountEl, { childList: true, subtree: true });
-
-    // Observer 2: mutations on mount's PARENT — catches Steam's native home
-    // re-adding/re-ordering siblings, which is when it re-registers our nav
-    // node at the wrong tree level. Only listens to direct-child changes.
-    let parentObs: MutationObserver | null = null;
-    if (mountEl.parentElement) {
-      parentObs = new MutationObserver(scheduleReparentOnly);
-      parentObs.observe(mountEl.parentElement, { childList: true });
-    }
-
-    // Safety net: poll every 3s. Stability guard short-circuits when the
-    /* position is correct, so the wake-ups cost near-zero in steady state.
-       MutationObservers (inside mount + on parent) + focusin + popstate +
-       hashchange already cover every real reparent trigger; the interval
-       only catches exotic Steam re-registers with no DOM mutation at all.
-       Previously ran at 750ms — 4× the wake-ups for no measurable benefit. */
-    const poll = window.setInterval(reparentOnly, 3000);
-
-    /* Focus events also signal Steam-driven tree changes; run reparent on
-       focusin at the document level (cheap; guard will no-op when correct).
-       rAF-throttled — focusin fires for EVERY focus change (rapid d-pad
-       navigation = many per frame), and reparentOnly's nav-tree walk +
-       stability guard each take measurable time. */
-    const doc = mountEl.ownerDocument;
-    const onFocusIn = () => scheduleReparentOnly();
-    doc?.addEventListener("focusin", onFocusIn, true);
-
-    const win = getPreferredSteamWindow();
-    /* popstate/hashchange are one-shot per nav (cheap to handle without
-       throttling) AND we want them to run synchronously so focus
-       restoration begins immediately on return from game detail —
-       delaying by a frame can let Steam's own focus-first-card reflex
-       race ahead and steal focus. So no throttle here. */
-    const onNavEvent = () => { applyPatches(); if (hasPendingFocus()) beginFocusRestoreLoop(); };
-    win.addEventListener("popstate", onNavEvent);
-    win.addEventListener("hashchange", onNavEvent);
-
-    return () => {
-      obs.disconnect();
-      parentObs?.disconnect();
-      window.clearInterval(poll);
-      for (const t of menuRetryTimers) { try { clearTimeout(t); } catch {} }
-      doc?.removeEventListener("focusin", onFocusIn, true);
-      win.removeEventListener("popstate", onNavEvent);
-      win.removeEventListener("hashchange", onNavEvent);
-      if (applyPending != null) cancelAnimationFrame(applyPending);
-      if (reparentPending != null) cancelAnimationFrame(reparentPending);
-    };
-  }, [mountEl]);
+  useEffect(() => {
+    if (!fadeRecentsTitle) return;
+    return installRecentsTitleFade(mountEl);
+  }, [fadeRecentsTitle, mountEl]);
 
   // Monitor shelves -> if hideRecentsSetting is true but there are no visible
   // shelves or none resolve to items, force recents visible and emit disable event.
@@ -685,71 +380,6 @@ function ShelvesContainer({ mountEl, shelves, globalMatchNativeSize = false, glo
     return () => { alive = false; };
   }, [shelves, hideRecentsSetting, mountEl]);
 
-  // Land gamepad focus on the first card of the first VISIBLE shelf —
-  /* native recents when shown, otherwise the first DS shelf. Steam's
-     shared FocusNavController (reachable from SharedJSContext) handles
-     BTakeFocus for both card types. Runs on mount, on shelf toggle
-     (shelves.length), and on hideRecents change. Retries because the
-     NavTree builds async on cold boot. */
-  useEffect(() => {
-    try { (globalThis as any).__ds_focus_effect_ran = { t: Date.now(), mountEl: !!mountEl, hideRecents: hideRecentsSetting, shelvesLen: shelves?.length ?? 0 }; } catch {}
-    let cancelled = false;
-    let restorePendingSeen = false;
-
-    /* A real home card (DS or native) already owns focus → the user is
-       navigating, don't interfere. A stale gpfocus on a non-card element
-       (header, removed node) does NOT count — we still want to land on
-       the first shelf in that case. */
-    const aRealCardHasFocus = (): boolean => {
-      const doc = mountEl.ownerDocument;
-      if (!doc) return false;
-      const gp = doc.querySelector<HTMLElement>('.gpfocus');
-      if (!gp) return false;
-      if (gp.closest('.ds-card')) return true;
-      const native = findNativeRecentsEl(doc);
-      return !!(native && native.contains(gp));
-    };
-
-    const focusFirstVisibleShelf = (): boolean => {
-      const doc = mountEl.ownerDocument;
-      // Native row visible → focus its first card.
-      if (!hideRecentsSetting && doc && focusNativeRecentsFirstCard(doc)) {
-        try { (globalThis as any).__ds_focus_first = { t: Date.now(), why: 'native-first' }; } catch {}
-        return true;
-      }
-      const firstCard = mountEl.querySelector('.ds-shelf .ds-card') as HTMLElement | null;
-      if (firstCard) {
-        focusElement(firstCard);
-        try { (globalThis as any).__ds_focus_first = { t: Date.now(), why: 'ds-first' }; } catch {}
-      }
-      return !!mountEl.querySelector('.ds-shelf .gpfocus, .deck-shelves-root .gpfocus');
-    };
-
-    const tryFocus = (): boolean => {
-      if (cancelled) return true;
-      try {
-        if (aRealCardHasFocus()) return true;
-        // A per-card restore (A → game → back) owns the focus outcome.
-        if (hasPendingFocus()) { restorePendingSeen = true; return false; }
-        if (restorePendingSeen) return true;
-        return focusFirstVisibleShelf();
-      } catch (e) { logInfo("HOME", "focus first shelf failed", String(e)); return false; }
-    };
-
-    if (tryFocus()) return () => { cancelled = true; };
-    /* Poll on a bounded interval rather than fixed delays — the home can
-       become the active gamepad context well after mount (slow cold boot,
-       or the QAM staying open after a shelf toggle), and BTakeFocus only
-       paints once the home tree is active. Stops as soon as focus lands
-       or after the cap, so it's battery-safe. */
-    const started = Date.now();
-    const poll = window.setInterval(() => {
-      if (cancelled || tryFocus() || Date.now() - started > 25_000) {
-        window.clearInterval(poll);
-      }
-    }, 600);
-    return () => { cancelled = true; window.clearInterval(poll); };
-  }, [hideRecentsSetting, mountEl, shelves?.length]);
 
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -810,7 +440,11 @@ function ShelvesContainer({ mountEl, shelves, globalMatchNativeSize = false, glo
         ? rootEl.querySelector<HTMLElement>(`.ds-shelf[data-shelfid="${CSS.escape(firstVisibleId)}"]`)
         : null;
       const all = Array.from(rootEl.querySelectorAll<HTMLElement>('.ds-shelf[data-shelfid]'));
-      const targets = forceCssLoaderThemes ? all : (firstShelf ? [firstShelf] : []);
+      const artHeroActive = isArtHeroActive();
+      const candidates = forceCssLoaderThemes ? all : (firstShelf ? [firstShelf] : []);
+      // Global compact mode keeps every Deck Shelves row out of Art Hero's
+      // native Recents selector space. Other themes keep their normal path.
+      const targets = artHeroActive && keepShelvesStacked ? [] : candidates;
       for (const t of targets) {
         t.classList.add(nativeClass);                                    // INVARIANT 4
         t.setAttribute('data-ds-recents-slot', 'true');
@@ -826,12 +460,10 @@ function ShelvesContainer({ mountEl, shelves, globalMatchNativeSize = false, glo
         try { t.removeAttribute('data-ds-recents-slot'); t.classList.remove(nativeClass); } catch {}
       }
     };
-  }, [hideRecentsSetting, firstVisibleId, mountEl, forceCssLoaderThemes, shelves, cssLoaderTick]);
+  }, [hideRecentsSetting, firstVisibleId, mountEl, forceCssLoaderThemes, keepShelvesStacked, shelves, cssLoaderTick]);
 
-  /* Mark .deck-shelves-root with data-ds-hero-label while an ArtHero-family
-     theme is active — the stylesheet keys the full-page hero layout (hidden
-     titles/labels, flex-bottom row) off this attribute. Previously set by
-     HeroBackground; moved here now that the hero+label are per-shelf. */
+  /* Isolate Art Hero's card selectors so the theme does not resize the native
+     cards rendered inside Deck Shelves. */
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
@@ -863,11 +495,14 @@ function ShelvesContainer({ mountEl, shelves, globalMatchNativeSize = false, glo
     };
     const apply = () => {
       try {
-        setFlag('data-ds-hero-label', isArtHeroActive());
+        const artHeroActive = isArtHeroActive();
+        setFlag('data-ds-art-hero-active', artHeroActive);
+        setFlag('data-ds-keep-shelves-stacked', keepShelvesStacked);
+        setFlag('data-ds-hero-label', false);
         // Theme flags — CSS in shelfStyles.ts scopes the visual change via
         // data-ds-recents-slot (first shelf or all under force).
         setFlag('data-ds-theme-no-hero-gradient', isNoHeroGradientActive());
-        setFlag('data-ds-theme-hero-fullscreen', isHeroFullscreenActive());
+        setFlag('data-ds-theme-hero-fullscreen', isHeroFullscreenActive() && !(artHeroActive && keepShelvesStacked));
         setFlag('data-ds-theme-no-home-text', isNoHomeTextActive());
         /* TiltedHome flag — when set, the shelfStyles.ts CSS gates a
            perspective + rotateY transform onto DS cards using the
@@ -937,6 +572,8 @@ function ShelvesContainer({ mountEl, shelves, globalMatchNativeSize = false, glo
       for (const o of observers) { try { o.disconnect(); } catch {} }
       try {
         root.removeAttribute('data-ds-hero-label');
+        root.removeAttribute('data-ds-art-hero-active');
+        root.removeAttribute('data-ds-keep-shelves-stacked');
         root.removeAttribute('data-ds-theme-no-hero-gradient');
         root.removeAttribute('data-ds-theme-hero-fullscreen');
         root.removeAttribute('data-ds-theme-no-home-text');
@@ -947,7 +584,7 @@ function ShelvesContainer({ mountEl, shelves, globalMatchNativeSize = false, glo
       } catch {}
       setHtmlFlag('data-ds-theme-focus-round-compat', false);
     };
-  }, [mountEl, forceCssLoaderThemes, hideRecentsSetting]);
+  }, [mountEl, forceCssLoaderThemes, hideRecentsSetting, shelfHeroBackground, globalHeroEnabled, keepShelvesStacked]);
 
   /* Drag-to-reorder shelves by holding the title (touch/mouse only; D-pad nav
      stays untouched). The hook scopes to `.ds-shelf[data-shelfid]` under the
@@ -1015,16 +652,24 @@ function ShelvesContainer({ mountEl, shelves, globalMatchNativeSize = false, glo
     return () => obs.disconnect();
   }, []);
 
+  // Steam's Home navigator must see every Millennium shelf as a peer of the
+  // other Home rows. A Focusable root turns the entire plugin into one opaque
+  // navigation child, so use a layout-only element in Millennium. Keep the
+  // Decky root unchanged for the original plugin runtime.
+  const millenniumNavigation = isMillenniumNavigationRuntime();
+  const RootContainer: any = millenniumNavigation ? "div" : Focusable;
+  const rootNavigationProps = millenniumNavigation ? {} : flowChildrenProps("column");
+
   return (
-    <Focusable
+    <RootContainer
       ref={rootRef}
       className="deck-shelves-root"
-      {...flowChildrenProps("column")}
+      {...rootNavigationProps}
       style={{ width: "100%", display: "flex", flexDirection: "column", paddingBottom: 8, marginBottom: 24, position: "relative" }}
     >
       {orderedShelves.map((shelf: any) => <ShelfView key={shelf.id} shelf={shelf} globalMatchNativeSize={globalMatchNativeSize} globalHighlightFirst={globalHighlightFirst} globalHighlightAll={globalHighlightAll} globalHighlightRandom={globalHighlightRandom} globalHideStatusLine={globalHideStatusLine} globalHideNewBadge={globalHideNewBadge} globalHideDiscountBadge={globalHideDiscountBadge} globalHideCompatIcons={globalHideCompatIcons} globalHideNonSteamBadge={globalHideNonSteamBadge} globalHideShelfTitle={globalHideShelfTitle} globalHideGameNames={globalHideGameNames} globalHideInstallIndicator={globalHideInstallIndicator} globalHideSeeMore={globalHideSeeMore} globalHideRefreshCard={globalHideRefreshCard} globalDedupeByName={globalDedupeByName} globalHeroEnabled={globalHeroEnabled} globalGameInfoAbove={globalGameInfoAbove} globalFriendsPlayingOverlay={globalFriendsPlayingOverlay} globalFriendsPlayingOverlayRecent={globalFriendsPlayingOverlayRecent} globalEnableLogo={globalEnableLogo} globalEnableIcon={globalEnableIcon} globalEnableDescription={globalEnableDescription} globalDescriptionBelowLogo={globalDescriptionBelowLogo} globalLogoBelowShelf={globalLogoBelowShelf} globalLogoPosition={globalLogoPosition} globalDescriptionPosition={globalDescriptionPosition} globalLogoSize={globalLogoSize} globalLogoTopOffset={globalLogoTopOffset} globalFullPageShelf={globalFullPageShelf} globalIconVerticalAlign={globalIconVerticalAlign} globalShelfTitlePosition={globalShelfTitlePosition} globalGameNamePosition={globalGameNamePosition} globalPlaytimePosition={globalPlaytimePosition} globalDescriptionHeight={globalDescriptionHeight} heroForced={perShelfHeroAllowed && shelfHeroBackground && shelf.id === firstVisibleId} heroLabelMount={perShelfHeroAllowed && (forceCssLoaderThemes || (hideRecentsSetting && shelf.id === firstVisibleId))} forceExpanded={hideRecentsSetting && shelf.id === firstVisibleId} forceLayoutAsRecents={forceCssLoaderThemes && !(hideRecentsSetting && shelf.id === firstVisibleId)} />)}
       <BadgeFocusOverlay />
       <FriendsAvatarOverlay />
-    </Focusable>
+    </RootContainer>
   );
 }

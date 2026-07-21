@@ -4,7 +4,8 @@ import {
   type LibraryStatGame, type ShelfStatInput, type ShelfSnapshot,
 } from "../domain/statistics";
 import { getCurrentSettings } from "../store/settingsStore";
-import { getAllAppOverviews, type AppOverview } from "./index";
+import { getAllAppOverviews, getLocalLibraryAppIds, type AppOverview } from "./index";
+import { selectLibraryStatisticApps } from "./statisticsLibrary";
 
 function toStatGame(a: AppOverview): LibraryStatGame {
   return {
@@ -27,7 +28,7 @@ export const BUILT_IN_LIBRARY_STATISTICS: StatisticsProviderDescriptor = {
   category: "library",
   resolve: async (): Promise<ReadonlyArray<StatisticsEntry>> => {
     const apps = await getAllAppOverviews().catch(() => [] as AppOverview[]);
-    const games = apps.map(toStatGame);
+    const games = selectLibraryStatisticApps(apps, getLocalLibraryAppIds(true)).map(toStatGame);
     return computeLibraryStatistics(games, Date.now());
   },
 };

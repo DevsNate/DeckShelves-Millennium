@@ -73,6 +73,7 @@
   "select_items_all": "Seleziona tutto",
   "global_game_info_above": "Mostra le info del gioco sopra",
   "game_info_above_label": "Mostra le info del gioco sopra",
+  "keep_shelves_stacked_label": "Mantieni Deck Shelves impilate",
   "confirm_continue": "Continua",
   "couple_info_above_title": "Nascondere il titolo dello scaffale?",
   "couple_info_above_body": "Mostrare le info del gioco sopra usa il layout a pagina intera in cui il titolo è nascosto, quindi anche il titolo dello scaffale verrà nascosto. Puoi mostrarlo di nuovo in qualsiasi momento.",

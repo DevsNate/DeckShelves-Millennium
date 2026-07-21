@@ -73,6 +73,7 @@
   "select_items_all": "すべて選択",
   "global_game_info_above": "カードの上にゲーム情報を表示",
   "game_info_above_label": "カードの上にゲーム情報を表示",
+  "keep_shelves_stacked_label": "Deck Shelvesを縦に並べる",
   "confirm_continue": "続行",
   "couple_info_above_title": "棚のタイトルを非表示にしますか？",
   "couple_info_above_body": "ゲーム情報を上に表示すると、タイトルが非表示になる全画面レイアウトを使用するため、棚のタイトルも非表示になります。いつでも再表示できます。",

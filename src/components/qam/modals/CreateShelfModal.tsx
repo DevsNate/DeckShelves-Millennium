@@ -35,6 +35,13 @@ const SMART_CATEGORY_KEY: Record<typeof SMART_CATEGORY_ORDER[number], string> = 
 };
 const ONLINE_GATED_MODES: ReadonlySet<string> = new Set(["friends_playing"]);
 
+function openAfterCurrentModalCloses(closeModal: (() => void) | undefined, render: Parameters<typeof openManagedModal>[0]): void {
+  closeModal?.();
+  // Steam's modal manager removes the current portal asynchronously. Opening
+  // the editor on the same stack frame can be discarded on Millennium.
+  globalThis.setTimeout(() => openManagedModal(render), 50);
+}
+
 const btnStyle: React.CSSProperties = {
   width: "100%",
   minHeight: 44,
@@ -114,19 +121,17 @@ function StandardPanel({ controller, closeModal }: { controller: SettingsControl
   }, [settings]);
   const suggested = suggestedIds.map((id) => allTemplates.find((x) => x.id === id)).filter((x): x is typeof SHELF_TEMPLATES[0] => !!x);
   const handleTemplate = (tpl: typeof SHELF_TEMPLATES[0]) => {
-    closeModal?.();
     const draft = {
       ...actions.createDraftShelf(),
       title: t(tpl.titleKey as any),
       source: tpl.source,
       ...(tpl.defaultSort ? { sort: tpl.defaultSort } : {}),
     };
-    openManagedModal((close) => <EditShelfModal closeModal={close} controller={controller} shelf={draft} mode="create" />);
+    openAfterCurrentModalCloses(closeModal, (close) => <EditShelfModal closeModal={close} controller={controller} shelf={draft} mode="create" />);
   };
   const handleBlank = () => {
-    closeModal?.();
     const draft = actions.createDraftShelf();
-    openManagedModal((close) => <EditShelfModal closeModal={close} controller={controller} shelf={draft} mode="create" />);
+    openAfterCurrentModalCloses(closeModal, (close) => <EditShelfModal closeModal={close} controller={controller} shelf={draft} mode="create" />);
   };
   return (
     <Focusable style={{ padding: 8, maxHeight: "calc(min(560px, 65vh) - 60px)", overflowY: "auto" }}>
@@ -219,14 +224,12 @@ function SmartPanel({ controller, closeModal }: { controller: SettingsController
     .map((mode) => visibleTemplates.find((x: any) => x.mode === mode))
     .filter(Boolean) as any[];
   const handleSmartTemplate = (tpl: any) => {
-    closeModal?.();
     const draft = actions.createDraftSmartShelf(tpl.mode, t(tpl.titleKey as any));
-    openManagedModal((close) => <EditSmartShelfModal closeModal={close} controller={controller} shelf={draft} mode="create" />);
+    openAfterCurrentModalCloses(closeModal, (close) => <EditSmartShelfModal closeModal={close} controller={controller} shelf={draft} mode="create" />);
   };
   const handleCustom = () => {
-    closeModal?.();
     const draft = actions.createDraftSmartShelf("custom" as SmartShelfMode, t("smart_template_custom" as any));
-    openManagedModal((close) => <EditSmartShelfModal closeModal={close} controller={controller} shelf={draft} mode="create" />);
+    openAfterCurrentModalCloses(closeModal, (close) => <EditSmartShelfModal closeModal={close} controller={controller} shelf={draft} mode="create" />);
   };
   return (
     <Focusable style={{ padding: 8, maxHeight: "calc(min(560px, 65vh) - 60px)", overflowY: "auto" }}>

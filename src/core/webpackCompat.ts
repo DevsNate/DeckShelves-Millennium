@@ -211,9 +211,22 @@ function walkShelfRowLayers(start: HTMLElement | null, labels: readonly string[]
   return out;
 }
 
+/** Return only a Steam-owned ReactVirtualized row.
+ *
+ * Deck Shelves now mounts Steam's generic carousel component too, so a plain
+ * querySelector can rediscover our borrowed grid and feed our own classes back
+ * into the native class map during a delayed rescan.
+ */
+function firstNativeGridInner(doc: Document): HTMLElement | null {
+  for (const grid of Array.from(doc.querySelectorAll<HTMLElement>('.ReactVirtualized__Grid__innerScrollContainer'))) {
+    if (!grid.closest('#deck-shelves-home-root')) return grid;
+  }
+  return null;
+}
+
 function _discoverNativeShelfRowLayers(doc: Document): Record<string, string> {
   try {
-    const grid = doc.querySelector<HTMLElement>('.ReactVirtualized__Grid__innerScrollContainer');
+    const grid = firstNativeGridInner(doc);
     if (!grid) return {};
     const row = grid.firstElementChild as HTMLElement | null;
     if (!row || row.closest('#deck-shelves-home-root')) return {};
@@ -229,7 +242,7 @@ function _discoverNativeShelfRowLayers(doc: Document): Record<string, string> {
 function _discoverNativeContainerChain(doc: Document, alreadyNamed: Set<string>): Record<string, string> {
   const out: Record<string, string> = {};
   try {
-    const grid = doc.querySelector<HTMLElement>('.ReactVirtualized__Grid__innerScrollContainer');
+    const grid = firstNativeGridInner(doc);
     if (!grid) return out;
     let cur: HTMLElement | null = grid.parentElement;
     let layerIdx = 0;
@@ -288,7 +301,7 @@ function pickHeroTokens(doc: Document, section: HTMLElement): { heroRoot?: strin
 function _discoverNativeHomeSectionTokens(doc: Document): Record<string, string> {
   const out: Record<string, string> = {};
   try {
-    const grid = doc.querySelector<HTMLElement>(".ReactVirtualized__Grid__innerScrollContainer");
+    const grid = firstNativeGridInner(doc);
     if (!grid) return out;
     const section = grid.closest<HTMLElement>('[class^="_"], [class*=" _"]');
     const sectionCls = firstHashedClass(section);
@@ -365,7 +378,7 @@ function shelfTokensLegacyFromElement(el: HTMLElement): Record<string, string> |
 
 function _discoverNativeShelfTokens(doc: Document): Record<string, string> | null {
   try {
-    const grid = doc.querySelector<HTMLElement>('.ReactVirtualized__Grid__innerScrollContainer');
+    const grid = firstNativeGridInner(doc);
     if (grid) {
       const result = shelfTokensFromGrid(grid);
       if (result) return result;
@@ -516,8 +529,8 @@ function computeCardGap(first: HTMLElement, second: HTMLElement, firstRect: DOMR
   try {
     const layoutW1 = first.offsetWidth;
     const bboxW1 = firstRect.width;
-    const hasSkew = layoutW1 > 0 && (bboxW1 / layoutW1 - 1) > 0.02;
-    if (hasSkew) {
+    const hasAncestorTransform = layoutW1 > 0 && Math.abs(bboxW1 / layoutW1 - 1) > 0.02;
+    if (hasAncestorTransform) {
       return Math.max(0, Math.round(second.offsetLeft - first.offsetLeft - layoutW1));
     }
   } catch {}
@@ -528,7 +541,10 @@ function imgHeightOf(root: HTMLElement): number | undefined {
   try {
     const img = root.querySelector('img');
     if (!img) return undefined;
-    const h = Math.round(img.getBoundingClientRect().height);
+    // offsetHeight is the native layout size. getBoundingClientRect includes
+    // Mini Carousel's ancestor scale and would cache a permanently shrunken
+    // art height after Deck Shelves isolates itself from that transform.
+    const h = Math.round(img.offsetHeight || img.getBoundingClientRect().height);
     return h >= 40 ? h : undefined;
   } catch { return undefined; }
 }
@@ -550,8 +566,8 @@ function pickFeaturedCard(wideRoots: HTMLElement[], firstRect: DOMRect, height: 
 
 function applyFeaturedDims(result: NativeCardDims, featCard: HTMLElement, width: number, height: number): void {
   const featRect = featCard.getBoundingClientRect();
-  const fw = Math.round(featRect.width);
-  const fh = Math.round(featRect.height);
+  const fw = Math.round(featCard.offsetWidth || featRect.width);
+  const fh = Math.round(featCard.offsetHeight || featRect.height);
   if (!(fw > width * 1.5 && fh >= 80 && fh <= height + 20)) return;
   result.featuredWidth = fw;
   result.featuredHeight = fh;
@@ -565,8 +581,12 @@ export function discoverNativeCardDimensions(doc: Document): NativeCardDims | nu
     if (portraitRoots.length < 2) return discoverNativeCardDimensionsViaClass(doc);
     const firstRect = portraitRoots[0].getBoundingClientRect();
     const secondRect = portraitRoots[1].getBoundingClientRect();
-    const width = Math.round(firstRect.width);
-    const height = Math.round(firstRect.height);
+    // Use layout dimensions rather than transformed screen rectangles. Themes
+    // such as Mini Carousel scale the entire native carousel ancestor, so the
+    // bounding box is intentionally smaller even though Steam's real card
+    // component remains 172px wide in layout.
+    const width = Math.round(portraitRoots[0].offsetWidth || firstRect.width);
+    const height = Math.round(portraitRoots[0].offsetHeight || firstRect.height);
     if (width < 50 || height < 80) return null;
     const result: NativeCardDims = {
       width, height,

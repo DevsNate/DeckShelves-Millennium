@@ -680,9 +680,10 @@ function PerShelfHero({ containerRef, showArt, isFirstShelf, forceLayoutAsRecent
     // online shelves — the card label's text changes from "#appid" to the
     // real name, which is neither a class nor a childList mutation.
     obs.observe(el, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'], characterData: true });
-    // Keep the label left-aligned with the focused card as the row scrolls
-    // (the centering animation moves the card after focusin fires).
-    const row = el.querySelector('.ds-row-scroll') as HTMLElement | null;
+    // Keep the label left-aligned with the focused card as Steam's inner
+    // ReactVirtualized grid scrolls. Scroll events do not bubble, but they do
+    // cross the shelf in the capture phase; listening here also survives a
+    // late fallback-to-native carousel replacement.
     const onRowScroll = () => {
       const fc = el.querySelector('.ds-card.gpfocus, .ds-card:focus') as HTMLElement | null;
       if (!fc) return;
@@ -692,11 +693,11 @@ function PerShelfHero({ containerRef, showArt, isFirstShelf, forceLayoutAsRecent
         setLabelLeft(Math.max(0, Math.round(cr.left - sr.left)));
       } catch {}
     };
-    row?.addEventListener('scroll', onRowScroll, { passive: true });
+    el.addEventListener('scroll', onRowScroll, { passive: true, capture: true });
     update();
     return () => {
       el.removeEventListener('focusin', update); obs.disconnect();
-      row?.removeEventListener('scroll', onRowScroll);
+      el.removeEventListener('scroll', onRowScroll, { capture: true });
       if (updatePending != null) cancelAnimationFrame(updatePending);
       if (heroSwapTimerRef.current) { clearTimeout(heroSwapTimerRef.current); heroSwapTimerRef.current = null; }
     };
@@ -957,6 +958,9 @@ function PerShelfHero({ containerRef, showArt, isFirstShelf, forceLayoutAsRecent
                 width: '100%', height: '100%', display: 'block',
                 // Anchor the art to the top — the pre-change framing the user
                 // wants (the native img class otherwise centres it at 50%).
+                /* Full-screen mode changes only the artwork layer's bounds.
+                   Keep framing/appearance available to CSS Loader themes and
+                   per-game artwork-position rules. */
                 objectPosition: '50% 18%',
                 // When the theme supplies its own zoom (native zoom class on
                 // the wrapper), disable ours — running both compounds the

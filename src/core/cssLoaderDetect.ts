@@ -16,7 +16,11 @@ function getCssLoaderStyleNodes(): HTMLStyleElement[] {
   const pushFrom = (d: Document | null | undefined) => {
     if (!d || seen.has(d)) return;
     seen.add(d);
-    try { out.push(...Array.from(d.querySelectorAll<HTMLStyleElement>("style.css-loader-style"))); } catch {}
+    try {
+      out.push(...Array.from(d.querySelectorAll<HTMLStyleElement>(
+        "style.css-loader-style, style[data-css-loader-runtime-id]",
+      )));
+    } catch {}
   };
   try { pushFrom(getPreferredSteamDocument()); } catch {}
   try { for (const d of getAllSteamDocuments()) pushFrom(d); } catch {}
@@ -43,6 +47,8 @@ export function isArtHeroActive(): boolean {
   const nodes = getCssLoaderStyleNodes();
   for (const node of nodes) {
     try {
+      const source = node.dataset?.cssLoaderSource || "";
+      if (/^Art Hero(?:\/|$)/i.test(source)) return true;
       const text = node.textContent || "";
       if (text.includes(heroToken) && /mask-image/i.test(text)) return true;
     } catch {}

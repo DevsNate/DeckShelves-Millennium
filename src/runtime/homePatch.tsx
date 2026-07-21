@@ -9,18 +9,113 @@ try { (globalThis as any).__ds_homepatch_loaded = Date.now(); (globalThis as any
 import { logDiagnostic } from "./diagnostics";
 import { logError, logInfo, logWarn } from "./logger";
 import { setPreferredSteamWindow } from "./steamHost";
-import { getRuntimeClassMap } from "../core/webpackCompat";
 import { notify } from "../components/notify";
+import { afterPatch } from "./host/decky";
+import { restoreFocusNavigationWithin, suppressFocusNavigationWithin } from "./homeTabNavigation";
 
 const ROOT_ID = "deck-shelves-home-root";
 const GLOBAL_COMPONENT_ID = "DeckShelvesHomeDomBridge";
+const HOME_NATIVE_SLOT_KEY = "deck-shelves-native-home-slot";
 
-let observer: MutationObserver | null = null;
-let timer = 0;
-let noAnchorLogged = false;
+const patchedHomeTypes = new WeakSet<object>();
+
+function hasRecentsSignature(node: any, depth = 0): boolean {
+  if (!node || depth > 7) return false;
+  if (Array.isArray(node)) return node.some((child) => hasRecentsSignature(child, depth + 1));
+  if (typeof node !== "object") return false;
+  const props = node.props;
+  if (props && Object.prototype.hasOwnProperty.call(props, "autoFocus")
+    && Object.prototype.hasOwnProperty.call(props, "showBackground")) return true;
+  return hasRecentsSignature(props?.children, depth + 1);
+}
+
+function findNativeHomeChildrenHolder(node: any, depth = 0): { holder: any; recentsIndex: number } | null {
+  if (!node || depth > 10 || typeof node !== "object") return null;
+  const children = node.props?.children;
+  const branches = Array.isArray(children) ? children : (children == null ? [] : [children]);
+
+  /* Prefer the deepest matching holder. The Home render contains a Fragment
+     whose direct branches are Recent Games, Home Tabs, and the trailing home
+     section. Inserting into that array makes Deck Shelves a real React child
+     of Steam's scrollable Home panel instead of a later DOM sibling. */
+  for (const child of branches) {
+    const nested = findNativeHomeChildrenHolder(child, depth + 1);
+    if (nested) return nested;
+  }
+  if (!Array.isArray(children) || children.length < 2) return null;
+  const recentsIndex = children.findIndex((child: any) => hasRecentsSignature(child));
+  if (recentsIndex < 0 || recentsIndex >= children.length - 1) return null;
+  return { holder: node, recentsIndex };
+}
+
+function injectNativeHomeShelves(tree: any): boolean {
+  const found = findNativeHomeChildrenHolder(tree);
+  if (!found) return false;
+  const children: any[] = found.holder.props.children;
+  if (children.some((child: any) => child?.key === HOME_NATIVE_SLOT_KEY)) return true;
+  const slot = React.createElement(HomeShelves as any, { key: HOME_NATIVE_SLOT_KEY });
+  found.holder.props.children = [
+    ...children.slice(0, found.recentsIndex + 1),
+    slot,
+    ...children.slice(found.recentsIndex + 1),
+  ];
+  try { (globalThis as any).__ds_native_home_injected = { at: Date.now(), index: found.recentsIndex + 1 }; } catch {}
+  return true;
+}
+
+function installNativeHomeMount(routerHook: any): { uninstall(): void } | null {
+  if (typeof routerHook?.addPatch !== "function") return null;
+  const patchFn = (props: { children: any }) => {
+    try {
+      const outer = props?.children;
+      if (!outer?.type || patchedHomeTypes.has(outer.type)) return props;
+      patchedHomeTypes.add(outer.type);
+      afterPatch(outer, "type", (_a: any, first?: any) => {
+        if (!first?.type || patchedHomeTypes.has(first.type)) return first;
+        patchedHomeTypes.add(first.type);
+        afterPatch(first.type, "type", (_b: any, homeTree?: any) => {
+          if (homeTree && !injectNativeHomeShelves(homeTree)) {
+            try { (globalThis as any).__ds_native_home_injection_miss = Date.now(); } catch {}
+          }
+          return homeTree;
+        });
+        return first;
+      });
+    } catch (e) { logWarn("HOME", "native Home mount patch failed", String(e)); }
+    return props;
+  };
+  try {
+    const patch = routerHook.addPatch("/library/home", patchFn);
+    logInfo("HOME", "native Home React mount registered");
+    return { uninstall: () => { try { routerHook.removePatch?.("/library/home", patch); } catch {} } };
+  } catch (e) {
+    logWarn("HOME", "native Home React mount unavailable", String(e));
+    return null;
+  }
+}
+
 let removeGlobalComponent: (() => void) | null = null;
 const uninstallHooks: Array<() => void> = [];
 let lastHostSource = "";
+let bridgeHostWindow: Window | null = null;
+
+/**
+ * Millennium evaluates plugins in SharedJSContext, but its global components
+ * are committed into the Steam UI window.  A DOM ref is the reliable bridge
+ * between those contexts: ownerDocument is the document React actually
+ * rendered into, rather than the document that evaluated this module.
+ */
+function captureBridgeHost(node: HTMLElement | null): void {
+  if (!node?.ownerDocument) return;
+  const win = node.ownerDocument.defaultView;
+  if (!win || win === bridgeHostWindow) return;
+  bridgeHostWindow = win;
+  setPreferredSteamWindow(win);
+  logInfo("HOME", "captured rendered Steam host", {
+    title: node.ownerDocument.title,
+    href: `${win.location?.pathname ?? ""}${win.location?.hash ?? ""}`,
+  });
+}
 
 // --- Crash protection ---
 let mountFailed = false;
@@ -151,25 +246,32 @@ function restoreSiblingDisplay(el: HTMLElement): void {
   el.removeAttribute("aria-hidden");
 }
 
-function setFocusableTabindex(f: HTMLElement, hidden: boolean): void {
+function setSiblingHidden(el: HTMLElement, hidden: boolean) {
   if (hidden) {
-    if (f.dataset.dsHtPrevTabindex === undefined) {
-      f.dataset.dsHtPrevTabindex = f.getAttribute("tabindex") ?? "0";
-    }
-    f.setAttribute("tabindex", "-1");
-  } else if (f.dataset.dsHtPrevTabindex !== undefined) {
-    f.setAttribute("tabindex", f.dataset.dsHtPrevTabindex);
-    delete f.dataset.dsHtPrevTabindex;
+    hideSiblingDisplay(el);
+    suppressFocusNavigationWithin(el);
+  } else {
+    restoreFocusNavigationWithin(el);
+    restoreSiblingDisplay(el);
   }
 }
 
-function setSiblingHidden(el: HTMLElement, hidden: boolean) {
-  if (hidden) hideSiblingDisplay(el); else restoreSiblingDisplay(el);
-  const focusables = el.querySelectorAll<HTMLElement>('[tabindex], button, a, input, [role="button"], .Focusable');
-  for (const f of Array.from(focusables)) setFocusableTabindex(f, hidden);
+const hiddenHomeTabs = new Set<HTMLElement>();
+const homeTabObservers = new Map<HTMLElement, MutationObserver>();
+
+function observeHiddenHomeTabs(el: HTMLElement): void {
+  if (homeTabObservers.has(el)) return;
+  const Observer = el.ownerDocument.defaultView?.MutationObserver;
+  if (!Observer) return;
+  const observer = new Observer(() => suppressFocusNavigationWithin(el));
+  observer.observe(el, { childList: true, subtree: true });
+  homeTabObservers.set(el, observer);
 }
 
-const hiddenHomeTabs = new Set<HTMLElement>();
+function stopObservingHiddenHomeTabs(el: HTMLElement): void {
+  homeTabObservers.get(el)?.disconnect();
+  homeTabObservers.delete(el);
+}
 
 /* Identify the "home tabs" siblings (Novidades/Amigos/Recomendados). These are
    distinguished by containing a [role=tablist] descendant — a semantic marker
@@ -188,7 +290,8 @@ function collectHomeTabSiblings(mountEl: HTMLElement): HTMLElement[] {
 
 function restoreAllHomeTabs(): void {
   for (const el of Array.from(hiddenHomeTabs)) {
-    if (el.isConnected) setSiblingHidden(el, false);
+    stopObservingHiddenHomeTabs(el);
+    setSiblingHidden(el, false);
   }
   hiddenHomeTabs.clear();
 }
@@ -196,8 +299,14 @@ function restoreAllHomeTabs(): void {
 function syncHomeTabsHidden(current: HTMLElement[]): void {
   const currentSet = new Set(current);
   for (const el of Array.from(hiddenHomeTabs)) {
-    if (!el.isConnected) { hiddenHomeTabs.delete(el); continue; }
+    if (!el.isConnected) {
+      stopObservingHiddenHomeTabs(el);
+      restoreFocusNavigationWithin(el);
+      hiddenHomeTabs.delete(el);
+      continue;
+    }
     if (!currentSet.has(el)) {
+      stopObservingHiddenHomeTabs(el);
       setSiblingHidden(el, false);
       hiddenHomeTabs.delete(el);
     }
@@ -207,6 +316,8 @@ function syncHomeTabsHidden(current: HTMLElement[]): void {
       setSiblingHidden(el, true);
       hiddenHomeTabs.add(el);
     }
+    suppressFocusNavigationWithin(el);
+    observeHiddenHomeTabs(el);
   }
 }
 
@@ -269,28 +380,6 @@ function findRecentsEl(doc: Document, mountEl: HTMLElement): HTMLElement | null 
   return prev ?? recentsFromAriaScan(doc, mountEl, mountParent, labels);
 }
 
-function getFocusNavController(): any {
-  return (globalThis as any).GamepadNavTree?.m_context?.m_controller || (globalThis as any).FocusNavController;
-}
-
-function getGamepadNavigationTrees(): any[] {
-  const focusNav = getFocusNavController();
-  const context = focusNav?.m_ActiveContext || focusNav?.m_LastActiveContext;
-  return context?.m_rgGamepadNavigationTrees ?? [];
-}
-
-function findSPWindow(): Window | null {
-  try {
-    if (document.title === "SP") return window;
-  } catch {}
-  try {
-    const navTrees = getGamepadNavigationTrees();
-    return navTrees?.find((x: any) => x?.m_ID === "GamepadUI_Full_Root" || x?.m_ID === "root_1_")?.Root?.Element?.ownerDocument?.defaultView ?? null;
-  } catch {
-    return null;
-  }
-}
-
 function getWindowCandidates(): Array<{ win: Window; source: string }> {
   const out: Array<{ win: Window; source: string }> = [];
   const seen = new Set<Window>();
@@ -302,9 +391,9 @@ function getWindowCandidates(): Array<{ win: Window; source: string }> {
     out.push({ win, source });
   };
   const sources: Array<[() => any, string]> = [
+    [() => bridgeHostWindow, "renderedBridge"],
     [() => window, "current"],
     [() => (window as any).opener, "opener"],
-    [() => findSPWindow(), "findSP"],
     [() => (window as any).SteamUIStore?.GetFocusedWindowInstance?.()?.BrowserWindow, "focusedWindow"],
     [() => (window as any).SteamUIStore?.WindowStore?.GamepadUIMainWindowInstance?.BrowserWindow, "mainWindow"],
   ];
@@ -316,23 +405,6 @@ function getWindowCandidates(): Array<{ win: Window; source: string }> {
     }
   } catch {}
   return out;
-}
-
-/* Hardcoded fallback for the native shelf-section token. Used only when the
-   runtime classmap hasn't been populated yet (very early boot, before
-   `discoverClassMap` runs). Anywhere else, prefer the live token via
-   `shelfSectionSelector(doc)`. */
-const FALLBACK_SHELF_SECTION = "_282X0J4BtrSF1IXctmOe-X";
-
-function shelfSectionSelector(doc: Document): string {
-  try {
-    const map = getRuntimeClassMap(doc);
-    const token = map?.shelfSection;
-    if (token && typeof token === "string") {
-      return `div.${token}, [class*="${token}"]`;
-    }
-  } catch {}
-  return `div.${FALLBACK_SHELF_SECTION}, [class*="${FALLBACK_SHELF_SECTION}"]`;
 }
 
 const RECENTS_QS = '[aria-label="Jogos recentes"], [aria-label="Recent Games"], [class*="ReactVirtualized__Grid"][aria-label]';
@@ -354,7 +426,6 @@ function scoreDocSignals(doc: Document): number {
   let s = 0;
   if (safeMatch(doc, RECENTS_QS)) s += 8;
   if (safeMatch(doc, LIBRARY_HOME_QS)) s += 6;
-  if (safeMatch(doc, shelfSectionSelector(doc))) s += 2;
   if (doc.body?.childElementCount) s += 1;
   return s;
 }
@@ -386,198 +457,6 @@ function getHostContext() {
   setPreferredSteamWindow(win);
   logHostSourceChange(source, win, best?.score ?? 0);
   return { win, doc, source };
-}
-
-function getContextSnapshot() {
-  const { win, doc, source } = getHostContext();
-  const href = `${win.location?.pathname ?? ""}${win.location?.hash ?? ""}`;
-  let hasObfuscatedAnchor = false;
-  try { hasObfuscatedAnchor = !!doc.querySelector(shelfSectionSelector(doc)); } catch {}
-  return {
-    source,
-    href,
-    readyState: doc.readyState,
-    hasObfuscatedAnchor,
-    hasHomeGrid: !!doc.querySelector('[aria-label="Jogos recentes"], [aria-label="Recent Games"], [class*="ReactVirtualized__Grid"][aria-label]'),
-    hasLibraryContainers: !!doc.querySelector('[class*="libraryhome"], [class*="LibraryHome"], [class*="BasicHomeView"], [class*="gamepadlibrary"]'),
-    bodyChildren: doc.body?.childElementCount ?? 0,
-  };
-}
-
-function hrefIsHomeLike(href: string): boolean {
-  if (href.includes("library/home") || href.includes("#library/home")) return true;
-  return href.includes("/library") && !href.includes("/library/app/") && !href.includes("/library/collections");
-}
-
-function isHomeVisible(): boolean {
-  const { win, doc } = getHostContext();
-  const href = `${win.location?.pathname ?? ""}${win.location?.hash ?? ""}`.toLowerCase();
-  if (hrefIsHomeLike(href)) return true;
-  if (safeMatch(doc, LIBRARY_HOME_QS)) return true;
-  if (safeMatch(doc, RECENTS_QS)) return true;
-  return safeMatch(doc, shelfSectionSelector(doc));
-}
-
-function closestSection(el: Element | null): HTMLElement | null {
-  let node: Element | null = el;
-  while (node) {
-    if (node instanceof HTMLElement && /section|div/i.test(node.tagName) && node.childElementCount > 0) return node;
-    node = node.parentElement;
-  }
-  return null;
-}
-
-type Anchor = { parent: HTMLElement; before: ChildNode | null };
-
-const RECENTS_LABEL_FRAGMENTS_EXT = [...RECENTS_LABEL_FRAGMENTS, "jogado recentemente"];
-const CHIP_LABELS = ["what's new", "friends", "recommended", "novidades", "amigos", "recomendados"];
-const ANCHOR_CONTAINERS_QS = '[class*="gamepadlibrary"], [class*="libraryhome"], [class*="LibraryHome"], [class*="BasicHomeView"], [class*="AppGridFilterContainer"], [class*="AllPagesContainer"], main, [role="main"]';
-const ANCHOR_CANDIDATES_QS = '[role="list"],[aria-label],[class*="ReactVirtualized__Grid"],[class*="ReactVirtualized__Grid__innerScrollContainer"]';
-
-function isScrollableViewport(p: HTMLElement): boolean {
-  try {
-    const cs = getComputedStyle(p);
-    const oy = (cs.overflowY || '').toLowerCase();
-    return (oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight;
-  } catch { return false; }
-}
-
-function findScrollableAncestor(start: HTMLElement, doc: Document): Anchor | null {
-  let container: HTMLElement | null = start;
-  for (let i = 0; i < 12 && container; i++) {
-    const p: HTMLElement | null = container.parentElement;
-    if (!p || p === doc.body) break;
-    if (isScrollableViewport(p)) return { parent: p, before: container.nextSibling };
-    container = p;
-  }
-  return null;
-}
-
-function anchorFromGridOrSection(node: Element): Anchor | null {
-  const grid = (node as HTMLElement).closest?.('[class*="ReactVirtualized__Grid"]') as HTMLElement | null;
-  const gridWrapper = grid?.parentElement as HTMLElement | null;
-  if (gridWrapper?.parentElement) return { parent: gridWrapper.parentElement, before: gridWrapper.nextSibling };
-  const section = closestSection(node);
-  if (section?.parentElement) return { parent: section.parentElement, before: section.nextSibling };
-  return null;
-}
-
-function anchorFromRecentsCandidates(doc: Document): Anchor | null {
-  for (const node of Array.from(doc.querySelectorAll(ANCHOR_CANDIDATES_QS))) {
-    const txt = `${(node.getAttribute?.("aria-label") || "")} ${(node.textContent || "")}`.toLowerCase();
-    if (!RECENTS_LABEL_FRAGMENTS_EXT.some((label) => txt.includes(label))) continue;
-    const scrollable = findScrollableAncestor(node as HTMLElement, doc);
-    if (scrollable) return scrollable;
-    const fallback = anchorFromGridOrSection(node);
-    if (fallback) return fallback;
-  }
-  return null;
-}
-
-function anchorFromChipLabels(doc: Document): Anchor | null {
-  for (const node of Array.from(doc.querySelectorAll('button, [role="tab"]'))) {
-    const text = (node.textContent || "").trim().toLowerCase();
-    if (!CHIP_LABELS.includes(text)) continue;
-    const section = closestSection(node);
-    if (section?.parentElement) return { parent: section.parentElement, before: section };
-  }
-  return null;
-}
-
-function anchorFromKnownContainers(doc: Document): Anchor | null {
-  const known = doc.querySelector(shelfSectionSelector(doc)) as HTMLElement | null;
-  if (known?.parentElement) return { parent: known.parentElement, before: known.nextSibling };
-  for (const node of Array.from(doc.querySelectorAll(ANCHOR_CONTAINERS_QS))) {
-    if (node instanceof HTMLElement) return { parent: node, before: node.firstChild };
-  }
-  return null;
-}
-
-function resolveAnchor(): Anchor | null {
-  const { doc } = getHostContext();
-  return anchorFromRecentsCandidates(doc) ?? anchorFromChipLabels(doc) ?? anchorFromKnownContainers(doc);
-}
-
-function safeResolveAnchor(): Anchor | null | "error" {
-  try { return resolveAnchor(); }
-  catch (err) {
-    const msg = String(err);
-    logError("HOME", "resolveAnchor threw — crash protection engaged", msg);
-    mountFailed = true;
-    mountError = msg;
-    return "error";
-  }
-}
-
-function createMountElement(doc: Document, anchorParent: HTMLElement): HTMLElement {
-  const mount = doc.createElement("div");
-  mount.id = ROOT_ID;
-  mount.className = "Panel";
-  Object.assign(mount.style, {
-    width: "100%", display: "block", position: "relative",
-    zIndex: "0", margin: "0", padding: "0",
-  });
-  logInfo("HOME", "mount created", { parent: anchorParent.tagName });
-  return mount;
-}
-
-function reparentMountTo(mount: HTMLElement, anchor: Anchor): boolean {
-  try {
-    if (mount.parentElement !== anchor.parent || (anchor.before && mount.nextSibling !== anchor.before)) {
-      anchor.parent.insertBefore(mount, anchor.before);
-    }
-    return true;
-  } catch (err) {
-    const msg = String(err);
-    logError("HOME", "mount insertion threw — crash protection engaged", msg);
-    mountFailed = true;
-    mountError = msg;
-    return false;
-  }
-}
-
-function clearMountFailureIfRecovered(): void {
-  const qaForceShelfError = __DEV__ && typeof __QA_SHELF_ERROR__ !== "undefined" && __QA_SHELF_ERROR__;
-  if (!mountFailed || qaForceShelfError) return;
-  mountFailed = false;
-  mountError = null;
-  logInfo("HOME", "mount recovered after previous failure");
-}
-
-function applyPendingRecentsToFoundEl(mount: HTMLElement): void {
-  try {
-    cachedRecentsEl!.style.visibility = pendingHideRecents ? "hidden" : "";
-    cachedRecentsEl!.style.height = pendingHideRecents ? "0px" : "";
-    cachedRecentsEl!.style.overflow = pendingHideRecents ? "hidden" : "";
-  } catch (e) { logInfo("HOME", "ensureMount: recents hide failed", String(e)); }
-  try { mount.style.setProperty("margin-top", pendingHideRecents ? "56px" : "", "important"); }
-  catch (e) { logInfo("HOME", "ensureMount: margin-top failed", String(e)); }
-}
-
-function refreshCachedRecentsEl(doc: Document, mount: HTMLElement): void {
-  if (cachedRecentsEl && cachedRecentsEl.isConnected) return;
-  cachedRecentsEl = findRecentsEl(doc, mount);
-  if (!cachedRecentsEl) return;
-  logInfo("HOME", "recents element found", { cls: cachedRecentsEl.className.substring(0, 60) });
-  applyPendingRecentsToFoundEl(mount);
-}
-
-function ensureMount(): HTMLElement | null {
-  if (!isHomeVisible()) return null;
-  const { doc } = getHostContext();
-  const anchor = safeResolveAnchor();
-  if (anchor === "error") return null;
-  if (!anchor || anchor.parent === doc.body) {
-    if (!noAnchorLogged) { noAnchorLogged = true; logWarn("HOME", "no mount anchor found yet", getContextSnapshot()); }
-    return null;
-  }
-  noAnchorLogged = false;
-  let mount = doc.getElementById(ROOT_ID) as HTMLElement | null;
-  if (!mount) mount = createMountElement(doc, anchor.parent);
-  if (!reparentMountTo(mount, anchor)) return null;
-  clearMountFailureIfRecovered();
-  refreshCachedRecentsEl(doc, mount);
-  return mount;
 }
 
 class HomeBoundary extends React.Component<{ children: React.ReactNode }, { crashed: boolean }> {
@@ -612,7 +491,11 @@ function HomeDomBridge() {
     HomeBoundary,
     null,
     React.createElement(React.Fragment, null,
-      React.createElement(HomeShelves),
+      React.createElement("span", {
+        ref: captureBridgeHost,
+        "data-deck-shelves-host-bridge": "1",
+        style: { display: "none" },
+      }),
       React.createElement(SearchOverlay),
       React.createElement(ShelfSideNav),
     ),
@@ -767,6 +650,7 @@ export function installHomePatch(_routerHook?: any) {
   });
 
   let bridgeRegistered = false;
+  const nativeHomeMount = installNativeHomeMount(routerHook);
 
   try {
     bridgeRegistered = registerGlobalBridge(routerHook);
@@ -775,154 +659,23 @@ export function installHomePatch(_routerHook?: any) {
     logWarn("HOME", "global component bridge setup failed", String(error));
   }
 
-  let fallbackRoot: { unmount(): void } | null = null;
-  let fallbackMountId: string | null = null;
-  let fallbackRetries = 0;
-  const MAX_FALLBACK_RETRIES = 6;
 
-  const giveUpFallback = () => {
-    logWarn("HOME", "fallback: giving up after max retries", { retries: fallbackRetries });
-    if (timer) { window.clearInterval(timer); timer = 0; }
-    observer?.disconnect();
-  };
-
-  const resolveReactDOM = (win: Window): any => {
-    return (globalThis as any).ReactDOM ?? (globalThis as any).SP_REACTDOM ?? (win as any).ReactDOM ?? (win as any).SP_REACTDOM;
-  };
-
-  const renderWithReactDOM = (ReactDOM: any, mount: HTMLElement): { unmount(): void } | null => {
-    const tree = React.createElement(
-    HomeBoundary,
-    null,
-    React.createElement(React.Fragment, null,
-      React.createElement(HomeShelves),
-      React.createElement(SearchOverlay),
-      React.createElement(ShelfSideNav),
-    ),
-  );
-    const renderFn = ReactDOM.createRoot ?? ReactDOM.default?.createRoot;
-    if (typeof renderFn === "function") {
-      const root = renderFn.call(ReactDOM.default ?? ReactDOM, mount);
-      root.render(tree);
-      logInfo("HOME", "fallback: rendered via createRoot");
-      return root;
-    }
-    if (typeof ReactDOM.render === "function") {
-      ReactDOM.render(tree, mount);
-      logInfo("HOME", "fallback: rendered via legacy render");
-      return { unmount: () => { try { ReactDOM.unmountComponentAtNode?.(mount); } catch {} } };
-    }
-    return null;
-  };
-
-  const ensureFallbackMount = (): HTMLElement | null => {
-    const mount = ensureMount();
-    if (mount) { fallbackRetries = 0; return mount; }
-    if (++fallbackRetries >= MAX_FALLBACK_RETRIES) giveUpFallback();
-    return null;
-  };
-
-  const shouldSkipFallbackRender = (doc: Document): boolean => {
-    const existing = doc.getElementById(ROOT_ID);
-    return existing?.dataset?.deckShelvesRenderer === "react";
-  };
-
-  const teardownPreviousFallbackRoot = (): void => {
-    if (!fallbackRoot) return;
-    try { fallbackRoot.unmount(); } catch {}
-    fallbackRoot = null;
-  };
-
-  const mountFallbackTo = (win: Window, mount: HTMLElement): void => {
-    teardownPreviousFallbackRoot();
-    const ReactDOM = resolveReactDOM(win);
-    if (!ReactDOM) { logWarn("HOME", "fallback: ReactDOM unavailable"); return; }
-    const rendered = renderWithReactDOM(ReactDOM, mount);
-    if (rendered) { fallbackRoot = rendered; fallbackMountId = mount.id; }
-  };
-
-  const tryFallbackRender = () => {
-    try {
-      const { win, doc } = getHostContext();
-      if (shouldSkipFallbackRender(doc)) return;
-      if (!isHomeVisible()) { fallbackRetries = 0; return; }
-      const mount = ensureFallbackMount();
-      if (!mount || mount.dataset.deckShelvesRenderer === "react") return;
-      if (fallbackRoot && fallbackMountId === mount.id) return;
-      mountFallbackTo(win, mount);
-    } catch (err) {
-      logWarn("HOME", "fallback render error", String(err));
-    }
-  };
-
-  const { win: hostWin, doc: hostDoc } = getHostContext();
-  observer?.disconnect();
-  /* rAF-throttle: a body+subtree observer fires hundreds of times per
-     second at boot while Steam's UI hydrates. Coalescing to one call per
-     frame keeps the early-mount path responsive without losing coverage
-     of structural DOM changes the mount detection needs to react to. */
-  let fallbackPending: number | null = null;
-  const scheduleFallback = () => {
-    if (fallbackPending != null) return;
-    fallbackPending = window.requestAnimationFrame(() => {
-      fallbackPending = null;
-      tryFallbackRender();
-    });
-  };
-  observer = new MutationObserver(scheduleFallback);
-  observer.observe(hostDoc.body, { childList: true, subtree: true });
-
-  if (timer) window.clearInterval(timer);
-  timer = window.setInterval(tryFallbackRender, 2000);
-
-  const onRouteSignal = () => tryFallbackRender();
-  hostWin.addEventListener("hashchange", onRouteSignal);
-  hostWin.addEventListener("popstate", onRouteSignal);
-  globalThis.addEventListener?.("deck-shelves-settings-changed", onRouteSignal as EventListener);
-
-  tryFallbackRender();
 
   logInfo("HOME", "installHomePatch complete", { bridgeRegistered });
 
-  const popAllUninstallHooks = (): void => {
-    while (uninstallHooks.length) {
-      const fn = uninstallHooks.pop();
-      try { fn?.(); } catch {}
-    }
-  };
-
-  const removeBridgeRegistration = (): void => {
+  const cleanup = () => {
+    try { nativeHomeMount?.uninstall(); } catch {}
     try { removeGlobalComponent?.(); removeGlobalComponent = null; } catch {}
     try { routerHook?.removeGlobalComponent?.(GLOBAL_COMPONENT_ID); } catch {}
-    try { routerHook?.removeGlobalComponent?.(HomeDomBridge); } catch {}
-  };
-
-  const runUninstallHooks = (): void => {
-    removeBridgeRegistration();
-    popAllUninstallHooks();
-  };
-
-  const tearDownObserversAndListeners = (): void => {
-    if (timer) { window.clearInterval(timer); timer = 0; }
-    observer?.disconnect();
-    observer = null;
-    hostWin.removeEventListener("hashchange", onRouteSignal);
-    hostWin.removeEventListener("popstate", onRouteSignal);
-    globalThis.removeEventListener?.("deck-shelves-settings-changed", onRouteSignal as EventListener);
-  };
-
-  const tearDownFallbackRoot = (): void => {
-    try { fallbackRoot?.unmount(); } catch {}
-    fallbackRoot = null;
-    try { hostDoc.getElementById(ROOT_ID)?.remove(); } catch {}
+    while (uninstallHooks.length) {
+      try { uninstallHooks.pop()?.(); } catch {}
+    }
   };
 
   return {
     uninstall() {
       logInfo("HOME", "uninstalling home patch");
-      runUninstallHooks();
-      tearDownObserversAndListeners();
-      tearDownFallbackRoot();
+      cleanup();
     },
   };
 }

@@ -509,21 +509,20 @@ export function EditSmartShelfModal({ closeModal, controller, shelf, mode = 'edi
   return (
     <ModalShell>
       <ConfirmModal
-        bAllowFullSize
         onCancel={closeModal}
         onEscKeypress={closeModal}
         strTitle={`${t('editing')}: ${shelf.title}`}
         onOK={handleSave}
         strOKButtonText={t('save')}
       >
-        <Focusable onMenuButton={handleSave} onMenuActionDescription={t('save')} style={{ paddingBottom: 8 }}>
+        <Focusable className='deck-shelves-edit-modal' onMenuButton={handleSave} onMenuActionDescription={t('save')} style={{ paddingBottom: 8 }}>
           <ModalHeader
             t={t}
             title={state.title}
             onTitleChange={(next) => setState((prev) => ({ ...prev, title: next }))}
             previewCount={previewCount}
           />
-          <div style={{ display: 'flex', flexDirection: 'column', height: 'min(calc(100vh - 130px), 540px)', minHeight: 400 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', height: 'min(50vh, 460px)', minHeight: 'min(360px, 44vh)' }}>
           <div style={{ flex: '1 1 0', minHeight: 0, position: 'relative', overflow: 'hidden' }}>
             <Tabs
               activeTab={activeTab}
