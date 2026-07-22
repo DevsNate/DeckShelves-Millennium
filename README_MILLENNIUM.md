@@ -63,6 +63,6 @@ enable the plugin and reload Steam.
 - [Release process](docs/port/releasing.md)
 - [Millennium-specific changelog](CHANGELOG_MILLENNIUM.md)
 
-The detailed upstream feature documentation remains in the root README and
-`docs/`. Unless a page under `docs/port/` says otherwise, it describes the
-shared Deck Shelves behavior rather than a Millennium-specific guarantee.
+Additional inherited documentation under `docs/` may describe shared upstream
+behavior. The files under `docs/port/` are the source of truth for the
+Millennium/Windows port.

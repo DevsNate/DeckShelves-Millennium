@@ -1,148 +1,22 @@
-name: "CI · Build & Test"
+name: CI
 
 on:
   push:
-    # Skip CI runs whose only changes are the auto-committed report files.
-    # Without this every `chore(report): …` commit would re-trigger CI in a loop.
-    paths-ignore:
-      - 'site/reports/**'
+    branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened]
+    branches: [main]
   workflow_dispatch:
 
-# Need `contents: write` so the report-commit step below can push the
-# generated HTML back to the branch (or to the default branch for tag pushes).
 permissions:
-  contents: write
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  contents: read
 
 jobs:
-  validate:
-    runs-on: ubuntu-latest
-    # Skip the bump-only commit on main (the auto-commit from bump.yml),
-    # but DO run on the matching tag push so the release tag gets its own
-    # validation + committed CI report. Without the tag-push exception the
-    # report-commit step never fires for release tags.
-    if: |
-      github.ref_type == 'tag'
-      || !startsWith(github.event.head_commit.message, 'chore: bump version')
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        # persist-credentials default (true) so the report-commit step can
-        # push without re-authenticating. All other steps are read-only.
-        # submodules: recursive pulls api/ + deckprobe/ on every run — api
-        # exports the `PublicAppMeta` types `src/core/pluginApi.ts` imports
-        # via `../../api/src/types`; without it tsc fails with TS2307.
-        with:
-          fetch-depth: 0
-          submodules: recursive
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile=false
-
-      - name: TypeScript check
-        run: pnpm run typecheck
-
-      - name: ESLint (JS/TS — complexity + react-hooks + bug catchers)
-        run: pnpm run lint:js
-
-      - name: Ruff (Python — pyflakes bug catchers)
-        run: |
-          python3 -m pip install -U pip
-          python3 -m pip install ruff
-          pnpm run lint:py
-
-      - name: Static validation
-        run: node scripts/build/validate.mjs
-
-      - name: Run TypeScript unit tests
-        run: pnpm run test
-
-      - name: Setup Python
-        run: |
-          python3 -m pip install -U pip setuptools
-          python3 -m pip install pytest
-
-      - name: Run Python unit tests
-        run: python3 -m pytest src/test/ -v
-
-      - name: Build plugin (release mode)
-        run: pnpm run build:release
-
-      - name: Package release zip
-        run: pnpm run dist
-
-      - name: Run compatibility checks
-        run: pnpm run validate:compat
-
-      - name: Upload release zip artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: deck-shelves-${{ github.sha }}
-          path: |
-            deck-shelves-v*.zip
-
-      # Triggers for the report:
-      #   - commit message contains `#report`
-      #   - PR title contains `#report`
-      #   - clean release tag push (`vX.Y.Z`) — pre-release tags are excluded
-      #.  - so they don't generate/commit a report or go through the store flow.
-      - name: Generate report
-        id: report
-        if: |
-          contains(github.event.head_commit.message, '#report')
-          || (github.event.pull_request && contains(github.event.pull_request.title, '#report'))
-          || (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-'))
-        run: pnpm run validate:ci
-
-      # Refresh the derived aggregates (per-scope `runs-manifest.json`,
-      # per-scope `index.html`, top-level `index.html`, `dashboard.html`)
-      # against everything currently on disk. The per-run generator only
-      # writes `{ts}.{html,json}`; without this step the dashboards stay
-      # stale and the new run is invisible until someone rebuilds locally.
-      - name: Rebuild aggregates
-        if: always() && steps.report.outcome != 'skipped'
-        run: pnpm run reports:rebuild
-
-      # Commit the freshly-generated report back to the repo.
-      # Skipped on PR runs (no write to a fork's branch) and only fires
-      # when the report step itself ran. For tag pushes the commit lands
-      # on the repo's default branch (tags themselves are immutable); for
-      # branch pushes / workflow_dispatch it lands on the current branch.
-      - name: Commit report
-        if: |
-          always()
-          && steps.report.outcome != 'skipped'
-          && github.event_name != 'pull_request'
-        env:
-          # SUBMIT_TOKEN (maintainer PAT) bypasses branch protection on main so
-          # the report pushes DIRECTLY — same as release.yml / weekly-report.yml.
-          # Without it the push is rejected and commit-report.sh falls back to an
-          # `auto/reports-*` branch + PR that, since it only touches
-          # site/reports/** (paths-ignored here), can never satisfy the required
-          # `validate` check → the PR never auto-merges and the branch is orphaned.
-          SUBMIT_TOKEN: ${{ secrets.SUBMIT_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.SUBMIT_TOKEN || secrets.GITHUB_TOKEN }}
-        run: bash scripts/ci/commit-report.sh
-
   millennium:
-    name: Millennium port
+    name: Millennium / Windows port
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout repository and pinned submodules
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           submodules: recursive
@@ -162,10 +36,10 @@ jobs:
       - name: Install Lua syntax checker
         run: sudo apt-get update && sudo apt-get install -y lua5.4
 
-      - name: Validate, test, build, and package Millennium port
+      - name: Validate, test, build, and package
         run: pnpm run check:millennium
 
-      - name: Upload Millennium release artifact
+      - name: Upload verified release archive
         uses: actions/upload-artifact@v4
         with:
           name: deck-shelves-millennium-${{ github.sha }}

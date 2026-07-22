@@ -45,7 +45,6 @@ Use Deckprobe/CDP against `http://127.0.0.1:8080/json/list`. The highest-signal
 existing probes are:
 
 - `deckprobe/diag/probe_dpad_down_recents.cjs`
-- `deckprobe/diag/probe_return_nav_state.cjs`
 - `deckprobe/diag/diag_ds_focus.cjs`
 - `deckprobe/diag/diag_mount.cjs`
 

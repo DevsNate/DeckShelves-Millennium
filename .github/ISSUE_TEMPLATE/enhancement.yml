@@ -1,7 +1,7 @@
 name: "[ENHANCEMENT] Enhancement"
 description: Improve an existing feature without adding something entirely new
 title: "[ENHANCEMENT] "
-labels: ["type::enhancement"]
+labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
