@@ -43,6 +43,24 @@ export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
       isolation: auto !important;
     }
     .Panel.ds-shelf { background: transparent !important; }
+    /* Keep every Deck Shelves layout layer clear so a native capsule's focus
+       shadow fades over the Steam/theme background instead of meeting an
+       opaque shelf band. Card artwork and hero layers are separate elements
+       and remain untouched. */
+    #deck-shelves-home-root,
+    #deck-shelves-home-root .deck-shelves-root,
+    #deck-shelves-home-root .deck-shelves-root > .ds-shelf,
+    #deck-shelves-home-root .deck-shelves-root > .ds-shelf .ds-row-scroll {
+      background: transparent !important;
+      background-image: none !important;
+    }
+    #deck-shelves-home-root .deck-shelves-root > .ds-shelf::before,
+    #deck-shelves-home-root .deck-shelves-root > .ds-shelf::after,
+    #deck-shelves-home-root .deck-shelves-root > .ds-shelf .ds-row-scroll::before,
+    #deck-shelves-home-root .deck-shelves-root > .ds-shelf .ds-row-scroll::after {
+      background: transparent !important;
+      background-image: none !important;
+    }
     /* Let Steam's real capsule glow paint across the otherwise-black header
        band of the following shelf. The Home root assigns descending stack
        values in DOM order; text/cards in the next shelf remain interactive
@@ -55,9 +73,33 @@ export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
     }
     ${shelfStackRules}
     #deck-shelves-home-root .deck-shelves-root > .ds-shelf .ds-row-scroll,
-    #deck-shelves-home-root .deck-shelves-root > .ds-shelf .ds-native-carousel-root,
     #deck-shelves-home-root .deck-shelves-root > .ds-shelf .ReactVirtualized__Grid__innerScrollContainer {
       overflow: visible !important;
+    }
+    /* Steam's carousel animation pans this element by updating scrollLeft.
+       overflow: visible makes it a non-scroll-container in Chromium, so
+       focus advances while the cards remain stationary. Preserve the visible
+       outer shelf overhang above, but keep the borrowed grid's native scroll
+       contract (horizontal auto, vertical hidden). */
+    #deck-shelves-home-root .deck-shelves-root > .ds-shelf .ds-native-carousel-root {
+      overflow: auto hidden !important;
+      scrollbar-width: none;
+    }
+    #deck-shelves-home-root .deck-shelves-root > .ds-shelf .ds-native-carousel-root::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+    /* A scroll container must clip vertically in Chromium, but Steam's focus
+       shadow extends below the normal carousel box. Enlarge only that paint
+       box while keeping the outer row at its original layout height, so the
+       shadow has room to fade without adding space between shelves. */
+    #deck-shelves-home-root .ds-shelf:not([data-ds-info-above="true"]) .ds-row-scroll--native-carousel {
+      height: var(--ds-native-carousel-height) !important;
+      overflow: visible !important;
+    }
+    #deck-shelves-home-root .ds-shelf:not([data-ds-info-above="true"]) .ds-native-carousel-root {
+      height: calc(var(--ds-native-carousel-height) + 96px) !important;
     }
     .ds-row-scroll { scrollbar-width: none; -ms-overflow-style: none; }
     .ds-row-scroll::-webkit-scrollbar { display: none; width: 0; height: 0; }

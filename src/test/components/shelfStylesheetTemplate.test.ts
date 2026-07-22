@@ -13,7 +13,7 @@ const css = buildShelfStylesheet({
 });
 
 describe('native card layout CSS', () => {
-  it('prevents shelves from shrinking and clipping their row overhang', () => {
+  it('preserves shelf overhang while keeping the native carousel scrollable', () => {
     expect(css).toContain('flex-shrink: 0 !important');
     expect(css).toContain('#deck-shelves-home-root .deck-shelves-root > .ds-shelf:nth-child(1) { z-index: 74 !important; }');
     expect(css).toContain('#deck-shelves-home-root .deck-shelves-root > .ds-shelf:nth-child(64) { z-index: 11 !important; }');
@@ -21,8 +21,18 @@ describe('native card layout CSS', () => {
     expect(css).toContain('isolation: auto !important');
     expect(css).toContain('position: relative !important');
     expect(css).toContain('#deck-shelves-home-root .deck-shelves-root > .ds-shelf .ds-row-scroll');
-    expect(css).toContain('#deck-shelves-home-root .deck-shelves-root > .ds-shelf .ds-native-carousel-root,');
     expect(css).toContain('overflow: visible !important');
+    expect(css).toContain('#deck-shelves-home-root .deck-shelves-root > .ds-shelf .ds-native-carousel-root {');
+    expect(css).toContain('overflow: auto hidden !important');
+  });
+
+  it('keeps shelf layers transparent and gives the native shadow an unclipped paint area', () => {
+    expect(css).toContain('#deck-shelves-home-root .deck-shelves-root > .ds-shelf .ds-row-scroll {');
+    expect(css).toContain('background: transparent !important');
+    expect(css).toContain('background-image: none !important');
+    expect(css).toContain('.ds-row-scroll--native-carousel {');
+    expect(css).toContain('height: var(--ds-native-carousel-height) !important');
+    expect(css).toContain('height: calc(var(--ds-native-carousel-height) + 96px) !important');
   });
 
   it('uses Steam portrait and featured focus depths', () => {

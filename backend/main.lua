@@ -116,17 +116,6 @@ local function decode(body)
     return ok and value or nil
 end
 
-local function run_powershell_json(script)
-    local temp_dir = utils.getenv("TEMP") or utils.getenv("TMP") or PLUGIN_DIR
-    local script_path = fs.join(temp_dir, "deck-shelves-" .. utils.uuid() .. ".ps1")
-    if not write_file(script_path, script) then return nil end
-    local command = 'powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "' .. script_path .. '"'
-    local ok, output, status = pcall(utils.exec, command)
-    os.remove(script_path)
-    if not ok or status ~= 0 or not output then return nil end
-    return decode(trim(output))
-end
-
 local function clone(value)
     return decode(json.encode(value))
 end
@@ -497,47 +486,24 @@ function get_css_loader_themes()
 end
 
 function get_display_state()
-    local result = run_powershell_json([[
-$ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.Windows.Forms
-$count = [System.Windows.Forms.Screen]::AllScreens.Count
-[pscustomobject]@{ external = ($count -gt 1); supported = ($count -gt 0) } | ConvertTo-Json -Compress
-]])
-    if type(result) ~= "table" then result = { external = false, supported = false } end
-    return json.encode(result)
+    -- Millennium's Windows utils.exec() uses _popen(), which creates an outer
+    -- cmd.exe console before a hidden PowerShell child can start. That console
+    -- steals focus from Steam. Keep the optional signal fail-soft until the Lua
+    -- host exposes a genuinely windowless process API.
+    return json.encode({ external = false, supported = false })
 end
 
 function get_host_os()
-    local result = run_powershell_json([[
-$ErrorActionPreference = 'Stop'
-$os = Get-CimInstance Win32_OperatingSystem
-[pscustomobject]@{
-  system = 'Windows'; name = 'Windows'; distroId = $null
-  prettyName = [string]$os.Caption; version = [string]$os.Version
-  machine = [string]$env:PROCESSOR_ARCHITECTURE; isSteamOS = $false
-  steamosVersion = $null; supported = $true
-} | ConvertTo-Json -Compress
-]])
-    if type(result) ~= "table" then
-        result = { system = "Windows", name = "Windows", prettyName = "Windows", machine = utils.getenv("PROCESSOR_ARCHITECTURE"), isSteamOS = false, supported = true }
-    end
-    return json.encode(result)
+    return json.encode({
+        system = "Windows", name = "Windows", distroId = nil,
+        prettyName = "Windows", version = nil,
+        machine = utils.getenv("PROCESSOR_ARCHITECTURE"),
+        isSteamOS = false, steamosVersion = nil, supported = true,
+    })
 end
 
 function get_perf_snapshot()
-    local result = run_powershell_json([[
-$ErrorActionPreference = 'Stop'
-$cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
-$os = Get-CimInstance Win32_OperatingSystem
-$mem = if ([double]$os.TotalVisibleMemorySize -gt 0) { [math]::Round(100.0 * [double]$os.FreePhysicalMemory / [double]$os.TotalVisibleMemorySize, 1) } else { $null }
-[pscustomobject]@{
-  cpuPercent = if ($null -eq $cpu) { $null } else { [math]::Round([double]$cpu, 1) }
-  memAvailablePercent = $mem
-  supported = ($null -ne $cpu -or $null -ne $mem)
-} | ConvertTo-Json -Compress
-]])
-    if type(result) ~= "table" then result = { cpuPercent = nil, memAvailablePercent = nil, supported = false } end
-    return json.encode(result)
+    return json.encode({ cpuPercent = nil, memAvailablePercent = nil, supported = false })
 end
 
 -- Upstream's peripheral adapters use Linux bluetoothctl/wpctl. Windows has no

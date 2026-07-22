@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
-import { resolveNativeCarouselFromElement } from "../../components/shelf/NativeShelfCarousel";
+import { NativeShelfCarousel, resolveNativeCarouselFromElement } from "../../components/shelf/NativeShelfCarousel";
 
 describe("native shelf carousel discovery", () => {
   it("finds Steam's generic virtualized carousel and preserves its motion contract", () => {
@@ -52,6 +54,44 @@ describe("native shelf carousel discovery", () => {
       return: null,
     };
     expect(resolveNativeCarouselFromElement(element)).toBeNull();
+  });
+
+  it("lets Steam commit the focused column after native movement completes", async () => {
+    const renders: any[] = [];
+    const NativeCarousel = (props: any) => {
+      renders.push(props);
+      return null;
+    };
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    await act(async () => root.render(createElement(NativeShelfCarousel, {
+      resolution: {
+        component: NativeCarousel,
+        className: "native-carousel",
+        scrollDuration: 120,
+        scrollTiming: "sine",
+        scrollToAlignment: "center",
+        itemMarginX: 12,
+        rightPadding: 0,
+      },
+      name: "Test shelf",
+      itemCount: 4,
+      itemHeight: 310,
+      viewportHeight: 340,
+      itemMarginX: 12,
+      getItemWidth: () => 172,
+      getItemId: (index) => String(index),
+      doesItemTakeFocus: () => true,
+      renderItem: () => null,
+    })));
+
+    expect(renders.at(-1)).not.toHaveProperty("fnOnFocusedColumnChange");
+    expect(renders.at(-1).focusedColumn).toBe(0);
+    await act(async () => renders.at(-1).setFocusedColumn(2));
+    expect(renders.at(-1).focusedColumn).toBe(2);
+
+    await act(async () => root.unmount());
   });
 
 });

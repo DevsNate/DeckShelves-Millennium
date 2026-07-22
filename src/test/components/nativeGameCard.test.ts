@@ -4,12 +4,11 @@ import { annotateNativeCard, resolveNativeCapsuleFromElement, shouldShowNativeCa
 import { installNativeTitleInteractionOwner, setNativeTitlePointerOwner } from "../../core/nativeTitleInteractionOwner";
 
 describe("native capsule discovery", () => {
-  it("forces native hover only for controller-owned focus", () => {
-    expect(shouldShowNativeCardAsHovered(true, true, false, false)).toBe(true);
-    expect(shouldShowNativeCardAsHovered(true, false, true, false)).toBe(true);
-    expect(shouldShowNativeCardAsHovered(true, false, false, false)).toBe(false);
-    expect(shouldShowNativeCardAsHovered(false, true, true, false)).toBe(false);
-    expect(shouldShowNativeCardAsHovered(true, true, true, true)).toBe(false);
+  it("forces native hover only for Steam's own gamepad focus", () => {
+    expect(shouldShowNativeCardAsHovered(true, true, false)).toBe(true);
+    expect(shouldShowNativeCardAsHovered(true, false, false)).toBe(false);
+    expect(shouldShowNativeCardAsHovered(false, true, false)).toBe(false);
+    expect(shouldShowNativeCardAsHovered(true, true, true)).toBe(false);
   });
 
   it("gives one hovered native card exclusive label ownership across rows", () => {

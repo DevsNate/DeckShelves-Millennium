@@ -1,4 +1,4 @@
-import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import type { DeckRowItem } from "./types";
 import { getPreferredSteamDocument } from "../../runtime/steamHost";
 import { getCurrentSettings, saveSettings } from "../../store/settingsStore";
@@ -6,7 +6,6 @@ import { patchShelfInSettings } from "../../domain/settings";
 import { createMatcherState, matchEvent, parseRawCombo, resolveBindings } from "../../runtime/buttonBindings";
 import { subscribeControllerInput } from "../../runtime/controllerInput";
 import { getRuntimeClassMap } from "../../core/webpackCompat";
-import { NativeCarouselControllerInputContext } from "./nativeCarouselInputMode";
 
 export type NativeCapsuleResolution = {
   component: ComponentType<any>;
@@ -15,11 +14,10 @@ export type NativeCapsuleResolution = {
 
 export function shouldShowNativeCardAsHovered(
   focused: boolean,
-  controllerInputActive: boolean,
   gamepadFocused: boolean,
   suppressNativeLabel: boolean,
 ): boolean {
-  return focused && (controllerInputActive || gamepadFocused) && !suppressNativeLabel;
+  return focused && gamepadFocused && !suppressNativeLabel;
 }
 
 const resolutionCache = new WeakMap<Document, NativeCapsuleResolution>();
@@ -258,7 +256,6 @@ export function NativeGameCard({
   onHideCard,
   fallback,
 }: NativeGameCardProps) {
-  const controllerInputActive = useContext(NativeCarouselControllerInputContext);
   const hostRef = useRef<HTMLDivElement>(null);
   const matcherRef = useRef(createMatcherState());
   const [focused, setFocused] = useState(false);
@@ -373,7 +370,6 @@ export function NativeGameCard({
      carousel suppress that focused title while another card owns hover. */
   const active = shouldShowNativeCardAsHovered(
     focused,
-    controllerInputActive,
     gamepadFocused,
     suppressNativeLabel,
   );

@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { restoreFocusNavigationWithin, suppressFocusNavigationWithin } from "../../runtime/homeTabNavigation";
+import {
+  restoreFocusNavigationWithin,
+  shouldHandleDownAtHiddenHomeTabsBoundary,
+  suppressFocusNavigationWithin,
+} from "../../runtime/homeTabNavigation";
 
 const owners: HTMLElement[] = [];
 
@@ -58,5 +62,24 @@ describe("hidden Home tab navigation", () => {
     restoreFocusNavigationWithin(owner);
     expect(firstNode.m_Properties.focusable).toBe(true);
     expect(replacementNode.m_Properties.focusable).toBe(true);
+  });
+
+  it("handles Down only on the final shelf while Home tabs are hidden", () => {
+    const first = {} as HTMLElement;
+    const last = {} as HTMLElement;
+    const shelves = { length: 2, item: (index: number) => [first, last][index] };
+    const root = { querySelectorAll: () => shelves } as unknown as HTMLElement;
+    first.closest = () => root;
+    last.closest = () => root;
+
+    expect(shouldHandleDownAtHiddenHomeTabsBoundary(first, true)).toBe(false);
+    expect(shouldHandleDownAtHiddenHomeTabsBoundary(last, true)).toBe(true);
+    expect(shouldHandleDownAtHiddenHomeTabsBoundary(last, false)).toBe(false);
+  });
+
+  it("does not intercept shelves outside the injected Home root", () => {
+    const shelf = { closest: () => null } as unknown as HTMLElement;
+
+    expect(shouldHandleDownAtHiddenHomeTabsBoundary(shelf, true)).toBe(false);
   });
 });

@@ -5,6 +5,9 @@ type SuppressedNode = {
 
 const suppressedNodes = new Map<any, SuppressedNode>();
 
+const HOME_ROOT_SELECTOR = "#deck-shelves-home-root";
+const SHELF_SELECTOR = ".ds-shelf";
+
 function navigationTrees(): any[] {
   const controller = (globalThis as any).FocusNavController;
   const trees: any[] = [];
@@ -44,4 +47,19 @@ export function restoreFocusNavigationWithin(owner: HTMLElement): void {
     if (node?.m_Properties) node.m_Properties.focusable = saved.focusable;
     suppressedNodes.delete(node);
   }
+}
+
+/* Hidden native Home tabs leave no section below the final Deck Shelves row.
+   Steam may then wrap to the first shelf or clear focus after a context menu.
+   Handling Down only at that boundary keeps the current card focused while
+   earlier shelves continue to use Steam's normal hand-off. */
+export function shouldHandleDownAtHiddenHomeTabsBoundary(
+  shelf: HTMLElement | null,
+  hideHomeTabs: boolean,
+): boolean {
+  if (!hideHomeTabs || !shelf) return false;
+  const root = shelf.closest<HTMLElement>(HOME_ROOT_SELECTOR);
+  if (!root) return false;
+  const shelves = root.querySelectorAll<HTMLElement>(SHELF_SELECTOR);
+  return shelves.length > 0 && shelves.item(shelves.length - 1) === shelf;
 }

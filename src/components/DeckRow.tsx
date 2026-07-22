@@ -32,6 +32,7 @@ import { trackFeature } from "../steam/usageTracking";
 import { patchShelfInSettings } from "../domain/settings";
 import { PerShelfHero } from "./shelf/PerShelfHero";
 import { NativeShelfCarousel, useNativeCarouselResolution } from "./shelf/NativeShelfCarousel";
+import { shouldHandleDownAtHiddenHomeTabsBoundary } from "../runtime/homeTabNavigation";
 
 function isScrollableEl(el: HTMLElement): boolean {
   try {
@@ -663,7 +664,16 @@ function DeckRowImpl({ title, items, shelfId, removableSet, matchNativeSize = fa
   // vertical peer while preserving the original Decky DOM and behavior.
   const millenniumNavigation = isMillenniumNavigationRuntime();
   const ShelfContainer: any = millenniumNavigation ? Focusable : "div";
-  const shelfNavigationProps = millenniumShelfSectionProps(shelfId, title);
+  const handleMoveDown = (): boolean => (
+    shouldHandleDownAtHiddenHomeTabsBoundary(
+      outerRef.current,
+      getCurrentSettings()?.hideHomeTabs === true,
+    )
+  );
+  const shelfNavigationProps = {
+    ...millenniumShelfSectionProps(shelfId, title),
+    ...(millenniumNavigation ? { onMoveDown: handleMoveDown } : {}),
+  };
   const rowNavigationProps = millenniumShelfRowProps(shelfId, title);
 
   return (
