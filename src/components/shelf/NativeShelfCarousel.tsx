@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { getPreferredSteamDocument } from "../../runtime/steamHost";
 import { subscribeControllerInput } from "../../runtime/controllerInput";
+import { NativeCarouselControllerInputContext } from "./nativeCarouselInputMode";
 
 export type NativeCarouselResolution = {
   component: ComponentType<any>;
@@ -150,10 +151,16 @@ export function NativeShelfCarousel({
       controllerInputActiveRef.current = false;
       setControllerInputActive(false);
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+      setController();
+    };
     doc?.addEventListener("mousemove", onMouseMove, true);
+    doc?.addEventListener("keydown", onKeyDown, true);
     return () => {
       unsubscribe();
       doc?.removeEventListener("mousemove", onMouseMove, true);
+      doc?.removeEventListener("keydown", onKeyDown, true);
     };
   }, []);
 
@@ -162,38 +169,40 @@ export function NativeShelfCarousel({
   }, [focusedColumn, itemCount]);
 
   return (
-    <NativeCarousel
-      name={name}
-      aria-label={name}
-      className={nativeClassName}
-      fnItemRenderer={(index: number, width: number, height: number, left: number) =>
-        renderItem(
-          index,
-          width,
-          height,
-          left,
-          (movingToColumn !== null || controllerInputActive) && index !== focusedColumn,
-        )}
-      fnGetColumnWidth={getItemWidth}
-      fnGetId={getItemId}
-      fnOnScroll={() => {}}
-      fnDoesItemTakeFocus={doesItemTakeFocus}
-      nNumItems={itemCount}
-      nHeight={viewportHeight}
-      nItemHeight={itemHeight}
-      nItemMarginX={itemMarginX}
-      autoFocus={false}
-      scrollToAlignment={resolution.scrollToAlignment}
-      scrollDuration={resolution.scrollDuration}
-      scrollTiming={resolution.scrollTiming}
-      overscan={Math.max(3, Math.min(19, itemCount - 1))}
-      focusedColumn={focusedColumn}
-      fnOnFocusedColumnChange={(_from: number, to: number) => setMovingToColumn(to)}
-      setFocusedColumn={(column: number) => {
-        setFocusedColumn(column);
-        setMovingToColumn(null);
-      }}
-      autoHeight={false}
-    />
+    <NativeCarouselControllerInputContext.Provider value={controllerInputActive}>
+      <NativeCarousel
+        name={name}
+        aria-label={name}
+        className={nativeClassName}
+        fnItemRenderer={(index: number, width: number, height: number, left: number) =>
+          renderItem(
+            index,
+            width,
+            height,
+            left,
+            (movingToColumn !== null || controllerInputActive) && index !== focusedColumn,
+          )}
+        fnGetColumnWidth={getItemWidth}
+        fnGetId={getItemId}
+        fnOnScroll={() => {}}
+        fnDoesItemTakeFocus={doesItemTakeFocus}
+        nNumItems={itemCount}
+        nHeight={viewportHeight}
+        nItemHeight={itemHeight}
+        nItemMarginX={itemMarginX}
+        autoFocus={false}
+        scrollToAlignment={resolution.scrollToAlignment}
+        scrollDuration={resolution.scrollDuration}
+        scrollTiming={resolution.scrollTiming}
+        overscan={Math.max(3, Math.min(19, itemCount - 1))}
+        focusedColumn={focusedColumn}
+        fnOnFocusedColumnChange={(_from: number, to: number) => setMovingToColumn(to)}
+        setFocusedColumn={(column: number) => {
+          setFocusedColumn(column);
+          setMovingToColumn(null);
+        }}
+        autoHeight={false}
+      />
+    </NativeCarouselControllerInputContext.Provider>
   );
 }

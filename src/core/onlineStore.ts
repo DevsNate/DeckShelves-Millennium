@@ -1,5 +1,5 @@
 
-import { call } from "@decky/api";
+import { call } from "../runtime/host/decky";
 import { logInfo, logWarn } from "../runtime/logger";
 
 const WISHLIST_KEY = "ds-wishlist-cache-v1";

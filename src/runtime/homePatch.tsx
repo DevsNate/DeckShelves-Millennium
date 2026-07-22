@@ -304,12 +304,36 @@ function setSiblingHidden(el: HTMLElement, hidden: boolean) {
 
 const hiddenHomeTabs = new Set<HTMLElement>();
 const homeTabObservers = new Map<HTMLElement, MutationObserver>();
+const homeTabResyncTimers = new Map<HTMLElement, number[]>();
+
+/* Steam can attach or rebuild GamepadNav nodes after the tab DOM has settled,
+   which does not necessarily produce another DOM mutation. Retry for a short,
+   bounded window after every hide/rebuild so those late nodes are suppressed
+   too, without permanently polling Steam's private navigation tree. */
+function scheduleHomeTabNavigationResync(el: HTMLElement): void {
+  stopHomeTabNavigationResync(el);
+  const view = el.ownerDocument.defaultView;
+  if (!view) return;
+  const timers = [50, 150, 300, 750, 1500].map((delay) => view.setTimeout(() => {
+    if (el.isConnected && hiddenHomeTabs.has(el)) suppressFocusNavigationWithin(el);
+  }, delay));
+  homeTabResyncTimers.set(el, timers);
+}
+
+function stopHomeTabNavigationResync(el: HTMLElement): void {
+  const view = el.ownerDocument.defaultView;
+  for (const timer of homeTabResyncTimers.get(el) ?? []) view?.clearTimeout(timer);
+  homeTabResyncTimers.delete(el);
+}
 
 function observeHiddenHomeTabs(el: HTMLElement): void {
   if (homeTabObservers.has(el)) return;
   const Observer = el.ownerDocument.defaultView?.MutationObserver;
   if (!Observer) return;
-  const observer = new Observer(() => suppressFocusNavigationWithin(el));
+  const observer = new Observer(() => {
+    suppressFocusNavigationWithin(el);
+    scheduleHomeTabNavigationResync(el);
+  });
   observer.observe(el, { childList: true, subtree: true });
   homeTabObservers.set(el, observer);
 }
@@ -317,6 +341,7 @@ function observeHiddenHomeTabs(el: HTMLElement): void {
 function stopObservingHiddenHomeTabs(el: HTMLElement): void {
   homeTabObservers.get(el)?.disconnect();
   homeTabObservers.delete(el);
+  stopHomeTabNavigationResync(el);
 }
 
 /* Identify the "home tabs" siblings (Novidades/Amigos/Recomendados). These are
@@ -363,6 +388,7 @@ function syncHomeTabsHidden(current: HTMLElement[]): void {
       hiddenHomeTabs.add(el);
     }
     suppressFocusNavigationWithin(el);
+    scheduleHomeTabNavigationResync(el);
     observeHiddenHomeTabs(el);
   }
 }
@@ -710,6 +736,7 @@ export function installHomePatch(_routerHook?: any) {
   logInfo("HOME", "installHomePatch complete", { bridgeRegistered });
 
   const cleanup = () => {
+    try { restoreAllHomeTabs(); } catch {}
     try { nativeHomeMount?.uninstall(); } catch {}
     try { removeGlobalComponent?.(); removeGlobalComponent = null; } catch {}
     try { routerHook?.removeGlobalComponent?.(GLOBAL_COMPONENT_ID); } catch {}

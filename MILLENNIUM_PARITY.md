@@ -253,8 +253,21 @@ integrations. They were retained unchanged in the Millennium build.
 ## Verification status
 
 - TypeScript typecheck passes for the v3.1.0 integration.
-- 683 Vitest tests pass across 56 files.
+- 698 Vitest tests pass across 59 files.
+- 122 Python backend tests pass.
+- The Millennium manifest, upstream provenance, frontend-to-Lua RPC contract,
+  single-bundle build, and deterministic seven-file package pass automated
+  validation. The package intentionally excludes settings, backups, and all
+  other user data.
+- Settings now carry schema version `1`; unversioned settings migrate forward
+  without replacing valid data, while unknown future schema versions are
+  preserved rather than silently downgraded.
+- The Decky release build and package verifier continue to pass independently,
+  keeping the upstream target intact.
 - The prior v3.0.2 live build passed exact settings round-trips, public API v4
   exercises, Lua worker/QAM registration, and Big Picture home rendering.
-- The v3.1.0 source has not yet been copied into the live Millennium plugin or
-  revalidated through Steam/CDP; live deployment remains a separate explicit step.
+- The hardened v3.1.0 build has passed a no-write deployment dry run against the
+  detected live Millennium plugin directory. It has not been copied into the
+  live plugin or revalidated through Steam/CDP; live deployment remains a
+  separate explicit step so unrelated working-tree changes are not shipped by
+  accident.

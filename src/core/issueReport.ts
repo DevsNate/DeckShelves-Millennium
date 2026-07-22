@@ -14,8 +14,9 @@ import {
 import { getDiagnostics } from "../runtime/diagnostics";
 import { getCurrentSettings } from "../store/settingsStore";
 import { openExternalUrl } from "./updateNotifier";
+import { getProjectLinks } from "./projectMetadata";
+import { logInfo } from "../runtime/logger";
 
-const ISSUE_URL = "https://github.com/santojon/Deck-Shelves/issues/new";
 const DASH = "—";
 // Keep the whole pre-filled body well under GitHub's URL length limit (~8 KB
 // once percent-encoded); diagnostics are small, so the rest is the log budget.
@@ -108,6 +109,11 @@ function fillEnvironment(p: URLSearchParams, runtime: RuntimeInfo, sys: SystemIn
 }
 
 export async function openBugReport(): Promise<void> {
+  const issueUrl = getProjectLinks().issuesUrl;
+  if (!issueUrl) {
+    logInfo("RUNTIME", "Issue reporting is disabled until ports/millennium/upstream.json defines portRepository");
+    return;
+  }
   const runtime = collectRuntimeInfo();
   let sys: SystemInfo | null = null;
   try { sys = await collectSystemInfo(); } catch { /* fail-soft — report without OS/Steam */ }
@@ -127,5 +133,5 @@ export async function openBugReport(): Promise<void> {
   p.set("title", "[BUG] ");
   p.set("context", context);
   fillEnvironment(p, runtime, sys);
-  openExternalUrl(`${ISSUE_URL}?${p.toString()}`);
+  openExternalUrl(`${issueUrl}?${p.toString()}`);
 }

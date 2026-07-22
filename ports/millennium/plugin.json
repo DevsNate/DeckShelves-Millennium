@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/SteamClientHomebrew/Millennium/main/src/sys/plugin-schema.json",
+  "name": "deck-shelves",
+  "common_name": "Deck Shelves",
+  "description": "Configurable game shelves for Steam Big Picture Home. Millennium port of Deck Shelves.",
+  "version": "3.1.0",
+  "useBackend": true,
+  "backend": "backend",
+  "backendType": "lua",
+  "webkitApiVersion": "2.0.0"
+}

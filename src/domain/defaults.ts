@@ -45,6 +45,7 @@ export function createDefaultSmartShelf(mode: SmartShelfMode, title: string): Sm
 
 export function defaultSettings(): Settings {
   return {
+    schemaVersion: 1,
     enabled: false,
     hideRecents: false,
     recentsReplaceSource: false,

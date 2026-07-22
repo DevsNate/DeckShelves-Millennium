@@ -1,0 +1,72 @@
+name: "Release · Millennium"
+
+on:
+  push:
+    tags:
+      - 'millennium-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies and Lua
+        run: |
+          pnpm install --frozen-lockfile
+          sudo apt-get update
+          sudo apt-get install -y lua5.4
+
+      - name: Verify release metadata
+        run: |
+          EXPECTED="millennium-v$(node -p "require('./ports/millennium/upstream.json').portVersion")"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            test "$GITHUB_REF_NAME" = "$EXPECTED" || { echo "Expected tag $EXPECTED, got $GITHUB_REF_NAME"; exit 1; }
+          fi
+          node -e "const m=require('./ports/millennium/upstream.json'); if (!m.portRepository) throw new Error('Set portRepository before a public release')"
+
+      - name: Validate, test, build, and package
+        run: pnpm run check:millennium
+
+      - name: Create SHA-256 checksum
+        run: |
+          VERSION="$(node -p "require('./ports/millennium/upstream.json').portVersion")"
+          sha256sum "Deck Shelves v${VERSION}.zip" > "Deck Shelves v${VERSION}.sha256"
+
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="millennium-v$(node -p "require('./ports/millennium/upstream.json').portVersion")"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p "require('./ports/millennium/upstream.json').portVersion")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish Millennium release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Deck Shelves v${{ steps.tag.outputs.version }}
+          generate_release_notes: true
+          files: |
+            Deck Shelves v*.zip
+            Deck Shelves v*.sha256

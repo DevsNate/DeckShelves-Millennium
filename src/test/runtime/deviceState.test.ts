@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 const { battery, settings, rpc } = vi.hoisted(() => ({
   battery: { current: null as any },
   settings: { current: {} as any },
-  rpc: { current: null as any },
+  rpc: { current: null as any, calls: [] as string[] },
 }))
 
 vi.mock('../../runtime/batteryState', () => ({
@@ -16,12 +16,19 @@ vi.mock('../../runtime/batteryState', () => ({
   subscribeBattery: () => () => {},
 }))
 vi.mock('../../store/settingsStore', () => ({ getCurrentSettings: () => settings.current }))
-vi.mock('../../runtime/host/decky', () => ({ call: async () => rpc.current }))
+vi.mock('../../runtime/host/decky', () => ({
+  call: async (method: string) => { rpc.calls.push(method); return rpc.current },
+}))
 
 import { evalDeviceRule, getDeviceState, isDeviceRuleKind, installDeviceState } from '../../runtime/deviceState'
 
 describe('evalDeviceRule', () => {
-  beforeEach(() => { battery.current = null; settings.current = {} })
+  beforeEach(() => {
+    battery.current = null
+    settings.current = {}
+    rpc.current = null
+    rpc.calls = []
+  })
 
   it('battery: matches when discharging at/below threshold %, not when charging', () => {
     battery.current = { hasBattery: true, state: 'discharging', level: 0.15 }
@@ -58,24 +65,30 @@ describe('evalDeviceRule', () => {
     expect(evalDeviceRule({ kind: 'nope' })).toBe(true)
   })
 
-  it('display kinds fail open when state is unknown (no refresh yet)', () => {
+  it('screen-only display kinds fail open when state is unknown (no refresh yet)', () => {
     // _external / _screen start null until a DisplayManager refresh populates them.
-    expect(evalDeviceRule({ kind: 'externalDisplay' })).toBe(true)
     expect(evalDeviceRule({ kind: 'resolution', minWidth: 3840 })).toBe(true)
     expect(evalDeviceRule({ kind: 'ultrawide' })).toBe(true)
+    expect(rpc.calls).toEqual([])
   })
 
-  it('display kinds reflect refreshed external + screen dims', async () => {
+  it('startup reads screen dimensions without probing external displays', async () => {
     rpc.current = { external: true, supported: true }
     ;(globalThis as any).SteamUIStore = {
       WindowStore: { GamepadUIMainWindowInstance: { BrowserWindow: { screen: { width: 3440, height: 1440 } } } },
     }
     const cleanup = installDeviceState()
-    await new Promise((r) => setTimeout(r, 0)) // let refreshDisplay's RPC resolve
-    expect(evalDeviceRule({ kind: 'externalDisplay' })).toBe(true)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(rpc.calls).toEqual([])
+    expect(getDeviceState().screen).toEqual({ w: 3440, h: 1440 })
     expect(evalDeviceRule({ kind: 'resolution', minWidth: 2560 })).toBe(true)
     expect(evalDeviceRule({ kind: 'resolution', minWidth: 3840 })).toBe(false)
     expect(evalDeviceRule({ kind: 'ultrawide' })).toBe(true) // 3440/1440 ≈ 2.39 ≥ 2.0
+
+    // The backend probe is deferred until an externalDisplay rule consumes it.
+    expect(evalDeviceRule({ kind: 'externalDisplay' })).toBe(true)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(rpc.calls).toEqual(['get_display_state'])
     const st = getDeviceState()
     expect(st.external).toBe(true)
     expect(st.screen).toEqual({ w: 3440, h: 1440 })
@@ -87,7 +100,11 @@ describe('evalDeviceRule', () => {
     rpc.current = { external: false, supported: true }
     const cleanup = installDeviceState()
     await new Promise((r) => setTimeout(r, 0))
+    expect(rpc.calls).toEqual([])
+    expect(evalDeviceRule({ kind: 'externalDisplay' })).toBe(true) // unknown while lazy probe runs
+    await new Promise((r) => setTimeout(r, 0))
     expect(evalDeviceRule({ kind: 'externalDisplay' })).toBe(false)
+    expect(rpc.calls).toEqual(['get_display_state'])
     cleanup()
   })
 
@@ -95,7 +112,11 @@ describe('evalDeviceRule', () => {
     rpc.current = { external: false, supported: false }
     const cleanup = installDeviceState()
     await new Promise((r) => setTimeout(r, 0))
+    expect(rpc.calls).toEqual([])
+    expect(evalDeviceRule({ kind: 'externalDisplay' })).toBe(true)
+    await new Promise((r) => setTimeout(r, 0))
     expect(evalDeviceRule({ kind: 'externalDisplay' })).toBe(true) // null → fail open
+    expect(rpc.calls).toEqual(['get_display_state'])
     cleanup()
   })
 

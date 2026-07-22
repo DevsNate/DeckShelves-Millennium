@@ -492,15 +492,20 @@ function updateNativeDims(steamDoc: Document): boolean {
   return dimsChanged;
 }
 
-// Inject the stylesheet once, then update CSS vars in place (no re-create → no
-// flicker) whenever radius / dims / badge-radius changed.
+/* Keep the stylesheet node stable to avoid flicker, but refresh its contents
+   when a newly loaded plugin bundle carries changed rules. Steam's Alt+F5
+   reload preserves the document/head, so an existence-only check leaves the
+   previous bundle's CSS active indefinitely. */
 function applyStyleVars(doc: Document, radiusChanged: boolean, dimsChanged: boolean, newBadgeRadiusChanged: boolean): void {
-  if (!doc.getElementById(STYLE_ID)) {
-    const style = doc.createElement("style");
+  let style = doc.getElementById(STYLE_ID) as HTMLStyleElement | null;
+  if (!style) {
+    style = doc.createElement("style");
     style.id = STYLE_ID;
-    style.textContent = buildStylesheet();
     doc.head.appendChild(style);
-  } else if (radiusChanged || dimsChanged || newBadgeRadiusChanged) {
+  }
+  const cssText = buildStylesheet();
+  if (style.textContent !== cssText) style.textContent = cssText;
+  if (radiusChanged || dimsChanged || newBadgeRadiusChanged) {
     doc.documentElement.style.setProperty('--ds-card-radius', cachedCardRadius);
     if (cachedNewBadgeRadius) doc.documentElement.style.setProperty('--ds-new-badge-radius', cachedNewBadgeRadius);
     else doc.documentElement.style.removeProperty('--ds-new-badge-radius');

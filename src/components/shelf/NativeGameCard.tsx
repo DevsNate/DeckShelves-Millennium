@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import type { DeckRowItem } from "./types";
 import { getPreferredSteamDocument } from "../../runtime/steamHost";
 import { getCurrentSettings, saveSettings } from "../../store/settingsStore";
@@ -6,11 +6,21 @@ import { patchShelfInSettings } from "../../domain/settings";
 import { createMatcherState, matchEvent, parseRawCombo, resolveBindings } from "../../runtime/buttonBindings";
 import { subscribeControllerInput } from "../../runtime/controllerInput";
 import { getRuntimeClassMap } from "../../core/webpackCompat";
+import { NativeCarouselControllerInputContext } from "./nativeCarouselInputMode";
 
 export type NativeCapsuleResolution = {
   component: ComponentType<any>;
   labelHeight: number;
 };
+
+export function shouldShowNativeCardAsHovered(
+  focused: boolean,
+  controllerInputActive: boolean,
+  gamepadFocused: boolean,
+  suppressNativeLabel: boolean,
+): boolean {
+  return focused && (controllerInputActive || gamepadFocused) && !suppressNativeLabel;
+}
 
 const resolutionCache = new WeakMap<Document, NativeCapsuleResolution>();
 
@@ -159,15 +169,16 @@ function markTokenMatches(
  * Runtime semantic tokens cover normal builds; geometry/text matching keeps
  * title/status visibility settings working when DFL is unavailable.
  */
-function annotateNativeCard(host: HTMLElement, itemName: string, cardHeight: number): void {
-  host.querySelectorAll<HTMLElement>(".ds-native-game-name,.ds-native-status-line,.ds-native-compat,.ds-native-new-badge,.ds-native-discount-badge,.ds-native-install-indicator")
+export function annotateNativeCard(host: HTMLElement, itemName: string, cardHeight: number): void {
+  host.querySelectorAll<HTMLElement>(".ds-native-game-info-root,.ds-native-game-name,.ds-native-status-line,.ds-native-compat,.ds-native-new-badge,.ds-native-discount-badge,.ds-native-install-indicator")
     .forEach((node) => node.classList.remove(
-      "ds-native-game-name", "ds-native-status-line", "ds-native-compat",
+      "ds-native-game-info-root", "ds-native-game-name", "ds-native-status-line", "ds-native-compat",
       "ds-native-new-badge", "ds-native-discount-badge", "ds-native-install-indicator",
     ));
 
   const doc = host.ownerDocument;
   const map = getRuntimeClassMap(doc);
+  markTokenMatches(host, map, ["nativeLabelOuter"], "ds-native-game-info-root");
   markTokenMatches(host, map, [
     "nativeStatus", "nativeStatusItem", "nativeStatusEntry", "nativeStatusText",
     "nativeStatusLine", "nativeStatusTime", "nativeStatusWrapper", "nativePlaytime",
@@ -181,6 +192,14 @@ function annotateNativeCard(host: HTMLElement, itemName: string, cardHeight: num
   markTokenMatches(host, map, ["nativeLibraryItemUpdateBadge"], "ds-native-install-indicator");
 
   const hostRect = host.getBoundingClientRect();
+  /* Native capsules can be scaled by Steam's carousel transform. `cardHeight`
+     is an unscaled layout value, while getBoundingClientRect() is transformed;
+     compare in rendered coordinates so title detection still reaches the
+     label band (for example 258 layout px renders as about 232 px at 0.9x). */
+  const layoutHeight = host.offsetHeight;
+  const renderedScaleY = layoutHeight > 0 && hostRect.height > 0 ? hostRect.height / layoutHeight : 1;
+  const renderedArtBottom = hostRect.top + cardHeight * renderedScaleY;
+  const labelBoundary = renderedArtBottom - 6;
   const expectedName = normalizedText(itemName);
   const leaves = Array.from(host.querySelectorAll<HTMLElement>("*"));
   for (const node of leaves) {
@@ -191,11 +210,11 @@ function annotateNativeCard(host: HTMLElement, itemName: string, cardHeight: num
        Only the native label-band instance belongs to the visibility controls;
        marking artwork text made transition probes and hide-name rules treat
        it as a second title. */
-    if (expectedName && text === expectedName && rect.top >= hostRect.top + cardHeight - 6) {
+    if (expectedName && text === expectedName && rect.top >= labelBoundary) {
       node.classList.add("ds-native-game-name");
       continue;
     }
-    if (rect.top >= hostRect.top + cardHeight - 6 && rect.height <= 40) {
+    if (rect.top >= labelBoundary && rect.height <= 40) {
       let line = node;
       while (line.parentElement && line.parentElement !== host) {
         const parent = line.parentElement;
@@ -239,10 +258,11 @@ export function NativeGameCard({
   onHideCard,
   fallback,
 }: NativeGameCardProps) {
+  const controllerInputActive = useContext(NativeCarouselControllerInputContext);
   const hostRef = useRef<HTMLDivElement>(null);
   const matcherRef = useRef(createMatcherState());
   const [focused, setFocused] = useState(false);
-  const [hovered, setHovered] = useState(false);
+  const [gamepadFocused, setGamepadFocused] = useState(false);
   const resolution = useNativeCapsuleResolution();
   const doc = getPreferredSteamDocument();
   const appid = typeof item.id === "number" ? item.id : Number(item.appid ?? 0);
@@ -259,7 +279,9 @@ export function NativeGameCard({
     // Mirror the real DOM/class state so bShowAsHovered always follows the
     // native card's actual controller focus.
     const syncFocused = () => {
-      setFocused(host.matches(":focus-within") || !!host.querySelector(".gpfocus"));
+      const hasGamepadFocus = !!host.querySelector(".gpfocus");
+      setGamepadFocused(hasGamepadFocus);
+      setFocused(host.matches(":focus-within") || hasGamepadFocus);
     };
     const syncAfterFocusMove = () => queueMicrotask(syncFocused);
     host.addEventListener("focusin", syncFocused);
@@ -287,7 +309,23 @@ export function NativeGameCard({
     annotate();
     const observer = typeof MutationObserver !== "undefined" ? new MutationObserver(annotate) : null;
     observer?.observe(host, { subtree: true, childList: true, characterData: true });
-    return () => observer?.disconnect();
+    /* The first visible native cards can mount before Steam's runtime class
+       map is published. Their DOM may then remain stable, so the mutation
+       observer never gets another chance to mark nativeLabelOuter. Retry for
+       a short bounded window and stop as soon as the original label is found. */
+    const timerWindow = host.ownerDocument.defaultView ?? window;
+    let retryCount = 0;
+    const markerRetry = timerWindow.setInterval(() => {
+      if (host.querySelector(".ds-native-game-info-root") || retryCount++ >= 11) {
+        timerWindow.clearInterval(markerRetry);
+        return;
+      }
+      annotate();
+    }, 250);
+    return () => {
+      observer?.disconnect();
+      timerWindow.clearInterval(markerRetry);
+    };
   }, [eligible, item.name, cardH]);
 
   useEffect(() => {
@@ -330,7 +368,15 @@ export function NativeGameCard({
 
   const NativeCard = resolution.component;
   const cssW = `var(${featured ? "--ds-eff-feat-w" : "--ds-eff-card-w"}, ${cardW}px)`;
-  const active = focused || hovered;
+  /* Steam's carousel owns mouse-hover reveal through its native :hover
+     selector. Only force the selected state for controller focus, and let the
+     carousel suppress that focused title while another card owns hover. */
+  const active = shouldShowNativeCardAsHovered(
+    focused,
+    controllerInputActive,
+    gamepadFocused,
+    suppressNativeLabel,
+  );
   const carouselWidth = Math.max(cardW, nativeCarouselWidth ?? doc?.documentElement?.clientWidth ?? cardW);
   const nativeHeight = cardH + resolution.labelHeight;
 
@@ -363,8 +409,6 @@ export function NativeGameCard({
       onBlurCapture={(event: any) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
       }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       style={{ position: "relative", width: cssW, minWidth: cssW, height: nativeHeight, flexShrink: 0, overflow: "visible" }}
     >
       <div className="ds-native-card-complete" style={{ position: "absolute", inset: 0, overflow: "visible" }}>
@@ -377,7 +421,7 @@ export function NativeGameCard({
           nLeft={nativeItemLeft}
           nCarouselWidth={carouselWidth}
           onItemFocus={(_focusedAppid: number, isFocused?: boolean) => setFocused(isFocused !== false)}
-          onItemHover={(isHovered: boolean) => setHovered(isHovered)}
+          onItemHover={() => {}}
           showAsHovered={active}
         />
       </div>

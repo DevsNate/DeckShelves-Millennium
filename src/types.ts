@@ -509,6 +509,7 @@ export const ShelfSchema = z.object({
 export type Shelf = z.infer<typeof ShelfSchema>;
 
 export const SettingsSchema = z.object({
+  schemaVersion: z.number().int().min(1).optional(),
   enabled: z.boolean().default(true),
   hideRecents: z.boolean().default(false),
   recentsReplaceSource: z.boolean().default(false),

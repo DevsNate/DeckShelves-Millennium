@@ -53,4 +53,5 @@ describe("native shelf carousel discovery", () => {
     };
     expect(resolveNativeCarouselFromElement(element)).toBeNull();
   });
+
 });

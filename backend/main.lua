@@ -24,6 +24,7 @@ local USER_HOME = os.getenv("USERPROFILE") or os.getenv("HOME") or ""
 local LEGACY_SETTINGS_FILE = USER_HOME .. "\\homebrew\\settings\\Deck-Shelves\\settings.json"
 
 local DEFAULT_SETTINGS = {
+    schemaVersion = 1,
     enabled = false,
     hideRecents = false,
     recentsReplaceSource = false,

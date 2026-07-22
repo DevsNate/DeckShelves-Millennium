@@ -23,7 +23,7 @@ function readCache(): Settings | null {
     // Apply migrations to cached payload too — same pre-v3 payload could
     // also be sitting at v3 if the user wrote it after the cache bump
     // before the migration shipped.
-    return parsed.success ? migrate(parsed.data) : null;
+    return parsed.success ? migrateSettings(parsed.data) : null;
   } catch {
     return null;
   }
@@ -107,8 +107,18 @@ function notify(raw: Settings) {
    the cached snapshot and freshly-fetched backend payloads, so users carry
    the fix forward regardless of where the stale data sits. Each migration
    MUST be idempotent. */
-function migrate(s: Settings): Settings {
-  let mutated = false;
+export const CURRENT_SETTINGS_SCHEMA_VERSION = 1;
+
+export function migrateSettings(s: Settings): Settings {
+  const sourceVersion = s.schemaVersion ?? 0;
+  if (sourceVersion > CURRENT_SETTINGS_SCHEMA_VERSION) {
+    logWarn("STORAGE", "settings schema is newer than this build; preserving it without downgrade", {
+      sourceVersion,
+      supportedVersion: CURRENT_SETTINGS_SCHEMA_VERSION,
+    });
+    return s;
+  }
+  let mutated = sourceVersion !== CURRENT_SETTINGS_SCHEMA_VERSION;
   const shelves = s.shelves.map((sh) => {
     /* "Recently Played" template used to emit { type: "tab", tab: "recent" },
        but listLibraryTabs() never had a "recent" tab id — so the edit modal's
@@ -122,7 +132,7 @@ function migrate(s: Settings): Settings {
     }
     return sh;
   });
-  return mutated ? { ...s, shelves } : s;
+  return mutated ? { ...s, schemaVersion: CURRENT_SETTINGS_SCHEMA_VERSION, shelves } : s;
 }
 
 /* A single invalid field must NEVER nuke the whole config to defaults: that
@@ -132,7 +142,7 @@ function migrate(s: Settings): Settings {
 function preserveOnParseFailure(candidate: unknown, error: unknown): Settings {
   try { logError("STORAGE", "settings failed schema validation — preserving data (not resetting)", JSON.stringify((error as any)?.issues?.slice(0, 6))); } catch {}
   if (candidate && typeof candidate === "object") {
-    try { return migrate({ ...defaultSettings(), ...(candidate as any) } as Settings); }
+    try { return migrateSettings({ ...defaultSettings(), ...(candidate as any) } as Settings); }
     catch (e) { try { logError("STORAGE", "settings merge fallback failed", String(e)); } catch {} }
   }
   return current ?? defaultSettings();
@@ -141,7 +151,7 @@ function preserveOnParseFailure(candidate: unknown, error: unknown): Settings {
 function normalize(raw: unknown): Settings {
   const candidate = (raw && typeof raw === "object" && "state" in (raw as any)) ? (raw as any).state : raw;
   const parsed = SettingsSchema.safeParse(candidate);
-  return parsed.success ? migrate(parsed.data) : preserveOnParseFailure(candidate, parsed.error);
+  return parsed.success ? migrateSettings(parsed.data) : preserveOnParseFailure(candidate, parsed.error);
 }
 
 export async function refreshSettings(): Promise<Settings> {

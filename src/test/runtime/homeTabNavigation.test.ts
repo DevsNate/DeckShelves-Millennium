@@ -28,4 +28,35 @@ describe("hidden Home tab navigation", () => {
     restoreFocusNavigationWithin(owner);
     expect(tabNode.m_Properties.focusable).toBe(true);
   });
+
+  it("suppresses late replacement nodes retained in the last active context", () => {
+    const firstTab = {} as HTMLElement;
+    const replacementTab = {} as HTMLElement;
+    const owner = {
+      contains: (element: HTMLElement) => element === firstTab || element === replacementTab,
+    } as HTMLElement;
+    owners.push(owner);
+
+    const firstNode = { m_element: firstTab, m_Properties: { focusable: true }, m_rgChildren: [] };
+    const replacementNode = { m_element: replacementTab, m_Properties: { focusable: true }, m_rgChildren: [] };
+    const controller = {
+      m_ActiveContext: { m_rgGamepadNavigationTrees: [{ m_Root: { m_rgChildren: [firstNode] } }] },
+      m_LastActiveContext: undefined as any,
+    };
+    (globalThis as any).FocusNavController = controller;
+
+    suppressFocusNavigationWithin(owner);
+    expect(firstNode.m_Properties.focusable).toBe(false);
+
+    controller.m_ActiveContext = { m_rgGamepadNavigationTrees: [] };
+    controller.m_LastActiveContext = {
+      m_rgGamepadNavigationTrees: [{ m_Root: { m_rgChildren: [replacementNode] } }],
+    };
+    suppressFocusNavigationWithin(owner);
+    expect(replacementNode.m_Properties.focusable).toBe(false);
+
+    restoreFocusNavigationWithin(owner);
+    expect(firstNode.m_Properties.focusable).toBe(true);
+    expect(replacementNode.m_Properties.focusable).toBe(true);
+  });
 });

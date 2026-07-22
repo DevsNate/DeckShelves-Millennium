@@ -70,7 +70,7 @@ def main() -> int:
             print(f"[verify] plugin.json parse error: {e}", file=sys.stderr)
             fail += 1
 
-        if zf.read(f"{top}/package.json").decode("utf-8") == (ROOT / "package.json").read_text(encoding="utf-8"):
+        if zf.read(f"{top}/package.json") == (ROOT / "package.json").read_bytes():
             print("[verify] package.json matches repo")
         else:
             print("[verify] package.json in ZIP differs from repo", file=sys.stderr)

@@ -2,9 +2,9 @@
    observes (version strings, active theme, co-loaded plugins) and never mutates
    Steam or plugin state. Advanced-mode only. */
 
-import pkg from "../../package.json";
 import { call } from "./host/decky";
 import { getSteamOSVersion } from "../core/steamOSVersion";
+import { getRuntimeVersion } from "../core/projectMetadata";
 import {
   isCssLoaderActive,
   getActiveCssLoaderThemes,
@@ -122,7 +122,7 @@ export async function collectSystemInfo(): Promise<SystemInfo> {
 
 export function collectRuntimeInfo(): RuntimeInfo {
   return {
-    version: (pkg as any).version ?? "0.0.0",
+    version: getRuntimeVersion(),
     steamOS: getSteamOSVersion(),
     decky: deckyLoader() != null,
     cssLoader: isCssLoaderActive(),

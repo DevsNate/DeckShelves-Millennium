@@ -28,6 +28,7 @@ import { isCssLoaderActive, getNativeRecentsClassName, isArtHeroActive, isNoHero
 import { BadgeFocusOverlay } from "./shelf/BadgeFocusOverlay";
 import { FriendsAvatarOverlay } from "./shelf/FriendsAvatarOverlay";
 import { installRecentsTitleFade } from "../core/recentsTitleFade";
+import { installNativeTitleInteractionOwner } from "../core/nativeTitleInteractionOwner";
 
 const homePlatform = createDeckyPlatform();
 
@@ -73,6 +74,11 @@ export function HomeShelves() {
       try { document.body.classList.remove('ds-hide-non-steam-badges'); } catch {}
       delete mountEl.dataset.deckShelvesRenderer;
     };
+  }, [mountEl]);
+
+  useEffect(() => {
+    if (!mountEl) return;
+    return installNativeTitleInteractionOwner(mountEl);
   }, [mountEl]);
 
   /* Apply hideRecents — only actually hide when the plugin is enabled and has

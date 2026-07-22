@@ -1,13 +1,9 @@
-import pkg from "../../package.json";
 import { isOnline } from "./connectivity";
 import { isOfflineModeOn } from "../components/ui/offlineMode";
 import { logInfo } from "../runtime/logger";
+import { getProjectLinks, getRuntimeHostKind, getRuntimeVersion } from "./projectMetadata";
 
 const CACHE_KEY = "ds-update-check-v1";
-const RELEASES_URL = "https://api.github.com/repos/santojon/Deck-Shelves/releases/latest";
-// Beta channel lists ALL releases (incl. pre-releases) and picks the newest;
-// `/releases/latest` deliberately skips pre-releases for stable users.
-const RELEASES_ALL_URL = "https://api.github.com/repos/santojon/Deck-Shelves/releases?per_page=30";
 const FETCH_TIMEOUT_MS = 5000;
 
 /* Read the opt-in beta channel from the settings cache without importing the
@@ -22,7 +18,8 @@ function readBetaChannel(): boolean {
 }
 
 function cacheKeyFor(beta: boolean): string {
-  return beta ? `${CACHE_KEY}-beta` : CACHE_KEY;
+  const host = getRuntimeHostKind();
+  return beta ? `${CACHE_KEY}-${host}-beta` : `${CACHE_KEY}-${host}`;
 }
 
 export interface UpdateCheckResult {
@@ -110,7 +107,7 @@ function comparePreRelease(a: string, b: string): number {
 }
 
 function buildResult(latestVersion: string | null, releaseUrl: string | null, ts: number): UpdateCheckResult {
-  const current = (pkg as any).version ?? "0.0.0";
+  const current = getRuntimeVersion();
   const hasUpdate = !!(latestVersion && compareSemver(latestVersion, current) > 0);
   return { hasUpdate, currentVersion: current, latestVersion, releaseUrl, checkedAt: ts };
 }
@@ -132,10 +129,13 @@ function pickNewestRelease(json: any): { version: string | null; url: string | n
 }
 
 async function fetchLatest(beta: boolean): Promise<{ version: string | null; url: string | null }> {
+  const releasesApiUrl = getProjectLinks().releasesApiUrl;
+  if (!releasesApiUrl) return { version: null, url: null };
+  const endpoint = beta ? `${releasesApiUrl}?per_page=30` : `${releasesApiUrl}/latest`;
   const ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
   const timer = ctrl ? setTimeout(() => { try { ctrl.abort(); } catch {} }, FETCH_TIMEOUT_MS) : null;
   try {
-    const res = await fetch(beta ? RELEASES_ALL_URL : RELEASES_URL, {
+    const res = await fetch(endpoint, {
       method: "GET",
       headers: { Accept: "application/vnd.github+json" },
       cache: "no-store",
@@ -204,6 +204,10 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
 export function __resetUpdateCheckCache(): void {
   try { localStorage.removeItem(CACHE_KEY); } catch {}
   try { localStorage.removeItem(`${CACHE_KEY}-beta`); } catch {}
+  try { localStorage.removeItem(`${CACHE_KEY}-decky`); } catch {}
+  try { localStorage.removeItem(`${CACHE_KEY}-decky-beta`); } catch {}
+  try { localStorage.removeItem(`${CACHE_KEY}-millennium`); } catch {}
+  try { localStorage.removeItem(`${CACHE_KEY}-millennium-beta`); } catch {}
   inFlight = null;
 }
 

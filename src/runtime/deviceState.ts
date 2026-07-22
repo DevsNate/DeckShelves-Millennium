@@ -59,13 +59,26 @@ function screenChanged(a: { w: number; h: number } | null, b: { w: number; h: nu
   return aw !== bw || ah !== bh;
 }
 
-async function refreshDisplay(): Promise<void> {
+let _externalRequested = false;
+let _externalInflight = false;
+
+async function refreshDisplay(includeExternal = false): Promise<void> {
   const nextScreen = readBpScreen();
-  const nextExternal = await fetchExternal();
+  const nextExternal = includeExternal ? await fetchExternal() : _external;
   const changed = nextExternal !== _external || screenChanged(nextScreen, _screen);
   if (nextScreen) _screen = nextScreen;
   _external = nextExternal;
   if (changed) notify();
+}
+
+/* Windows external-display detection uses a short PowerShell probe in the Lua
+   backend. Keep that probe strictly on demand: resolution / ultrawide only need
+   BrowserWindow.screen, and most users have no externalDisplay rule at all. */
+function requestExternalRefresh(force = false): void {
+  if ((!force && _externalRequested) || _externalInflight) return;
+  _externalRequested = true;
+  _externalInflight = true;
+  void refreshDisplay(true).finally(() => { _externalInflight = false; });
 }
 
 let _displayUnsub: (() => void) | null = null;
@@ -76,7 +89,11 @@ function subscribeDisplayManager(): void {
     const dm = (globalThis as any).SteamClient?.System?.DisplayManager;
     const reg = dm?.RegisterForStateChanges?.(() => {
       if (_displayDebounce) clearTimeout(_displayDebounce);
-      _displayDebounce = setTimeout(() => { _displayDebounce = null; void refreshDisplay(); }, 600);
+      _displayDebounce = setTimeout(() => {
+        _displayDebounce = null;
+        if (_externalRequested) requestExternalRefresh(true);
+        else void refreshDisplay();
+      }, 600);
     });
     if (reg && typeof reg.unregister === 'function') {
       _displayUnsub = () => { try { reg.unregister(); } catch {} };
@@ -131,12 +148,17 @@ export function installDeviceState(): () => void {
   const unsubBattery = subscribeBattery(notify);
   subscribeDisplayManager();
   subscribeControllers();
+  // Populate resolution/ultrawide state without launching the Windows backend
+  // probe. An externalDisplay rule requests that probe on first evaluation.
   void refreshDisplay();
   return () => {
     try { unsubBattery(); } catch {}
     if (_displayUnsub) { try { _displayUnsub(); } catch {} _displayUnsub = null; }
     if (_displayDebounce) { clearTimeout(_displayDebounce); _displayDebounce = null; }
     for (const u of _controllerUnsub.splice(0)) { try { u(); } catch {} }
+    _externalRequested = false;
+    _external = null;
+    _screen = null;
   };
 }
 
@@ -171,7 +193,10 @@ function evalResolution(rule: any, width: number): boolean {
 function evalDisplayRule(rule: any): boolean {
   const st = getDeviceState();
   const kind = String(rule && rule.kind || '');
-  if (kind === 'externalDisplay') return st.external == null ? true : st.external;
+  if (kind === 'externalDisplay') {
+    requestExternalRefresh();
+    return st.external == null ? true : st.external;
+  }
   if (kind === 'resolution') return st.screen ? evalResolution(rule, st.screen.w) : true;
   if (kind === 'ultrawide') return st.screen ? st.screen.w / st.screen.h >= ULTRAWIDE_RATIO : true;
   return true;

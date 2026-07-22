@@ -16,7 +16,7 @@ import {
 import { TRIGGER_CATALOG } from "../domain/triggerCatalog";
 import { SHELF_TEMPLATES, ONLINE_SHELF_TEMPLATES } from "../domain/templates";
 import { DEFAULT_BINDINGS } from "../runtime/buttonBindings";
-import pkg from "../../package.json";
+import { getRuntimeVersion } from "./projectMetadata";
 import type {
   Unsubscribe as ApiUnsubscribe,
   PublicAppMeta as ApiPublicAppMeta,
@@ -1071,7 +1071,7 @@ export function makeApi(): DeckShelvesPublicAPI {
     },
     getEnvironment() {
       return {
-        pluginVersion: typeof pkg?.version === "string" ? pkg.version : "0.0.0",
+        pluginVersion: getRuntimeVersion(),
         apiVersion: 4,
         locale: detectLocale(),
         isGamepadUi: detectGamepadUi(),

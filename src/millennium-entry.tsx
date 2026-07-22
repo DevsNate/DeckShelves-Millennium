@@ -13,7 +13,7 @@ declare global {
 // Millennium executes a plugin's Dist/index.js as a module script. Its TTC
 // compiler normally appends this registration wrapper; the Vite port needs to
 // provide the equivalent explicitly.
-(async () => {
+void (async () => {
   try {
     window.PLUGIN_LIST ??= {};
     window.PLUGIN_LIST[PLUGIN_NAME] ??= {};

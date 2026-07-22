@@ -31,7 +31,7 @@ export default defineConfig(async (env) => {
         output: {
           entryFileNames: "index.js",
           assetFileNames: "assets/[name]-[hash][extname]",
-          inlineDynamicImports: true,
+          codeSplitting: false,
         },
       },
     },

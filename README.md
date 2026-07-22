@@ -1,5 +1,13 @@
 # Deck Shelves
 
+<!-- millennium-port-banner:start -->
+> **This checkout is the independently maintained Millennium port.** It keeps
+> Deck Shelves' upstream Git history and shared frontend while replacing the
+> loader/backend boundary for Millennium. Start with
+> [README_MILLENNIUM.md](README_MILLENNIUM.md); the original Decky-oriented
+> documentation is retained below for upstream comparison and mergeability.
+<!-- millennium-port-banner:end -->
+
 <div align="center">
 <p>
   <img src="assets/logo.svg" alt="Deck Shelves" width="352">

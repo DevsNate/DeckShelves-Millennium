@@ -1,5 +1,6 @@
 {
   "state": {
+    "schemaVersion": 1,
     "enabled": true,
     "hideRecents": false,
     "recentsReplaceSource": false,

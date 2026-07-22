@@ -4,6 +4,7 @@ import { isArtHeroActive } from "../../core/cssLoaderDetect";
 import { getLandscapeUrls, getPortraitUrls, getHeroUrls as getCentralHeroUrls, getLogoUrls, getAppAssetCacheKey } from "../../core/steamAssets";
 import { getHotCachedImageSrc, warmCacheBackground, firstCacheableUrl } from "../../core/imageCache";
 import { getAppDescriptions, preloadAppDescriptions } from "../../steam/appDescriptionsCache";
+import { cloneGameInfoLabel, shouldShowGameInfoOverlay } from "./gameInfoLabel";
 
 let _nativeAssetProto: any = null;
 
@@ -289,7 +290,7 @@ function PerShelfHero({ containerRef, showArt, isFirstShelf, forceLayoutAsRecent
   // Smaller bleed above for non-first hero shelves so their art doesn't
   // overlap the shelf above. Determined by DOM order on mount.
   const [topBleed, setTopBleed] = useState(-90);
-  /* Game-info overlay: a clone of the focused card's `.ds-card-label`,
+  /* Game-info overlay: a clone of the focused card's complete info subtree,
      shown above the row exactly like the native recents hero label.
      Rendered inside THIS shelf (position:absolute relative to it) so it
      always follows the shelf — no global/fixed anchoring. */
@@ -306,7 +307,7 @@ function PerShelfHero({ containerRef, showArt, isFirstShelf, forceLayoutAsRecent
   // theme detection — it shows with or without an ArtHero theme.
   const needsLabel = infoAbove;
   const [rowH, setRowH] = useState(310);
-  const [labelLeft, setLabelLeft] = useState(40);
+  const [labelCenter, setLabelCenter] = useState(40);
   const [isPromoted, setIsPromoted] = useState(false);
   // Tracks whether a card in THIS shelf currently has gamepad/DOM focus.
   // Drives the conditional top fade under `forceLayoutAsRecents` (force-on
@@ -563,23 +564,27 @@ function PerShelfHero({ containerRef, showArt, isFirstShelf, forceLayoutAsRecent
         setLabelNode(null);
         return;
       }
-      // Align the overlay label horizontally with the focused card's left
-      // edge — mirrors native ArtHero, where the label tracks the focused
-      // tile. Read after a frame so the row's centering scroll has settled.
+      // Center the overlay horizontally over the focused card, matching the
+      // native selected-item header. Update it with the new label, then
+      // re-measure after a frame once the carousel's centering scroll settles.
       const fc = focused;
-      requestAnimationFrame(() => {
+      const nextLabel = cloneGameInfoLabel(fc);
+      const syncLabelCenter = () => {
         try {
           const sr = el.getBoundingClientRect();
           const cr = fc.getBoundingClientRect();
-          setLabelLeft(Math.max(0, Math.round(cr.left - sr.left)));
+          setLabelCenter(Math.max(0, Math.round(cr.left - sr.left + (cr.width / 2))));
         } catch {}
+      };
+      syncLabelCenter();
+      setLabelNode(nextLabel);
+      requestAnimationFrame(() => {
+        syncLabelCenter();
       });
       /* Always re-clone the card's label DOM so the overlay mirrors it
          byte-for-byte. Online shelves resolve game names asynchronously — if
          the first clone happened during the brief "#appid" window, re-cloning
          picks up the resolved name once it lands. */
-      const labelEl = focused.querySelector('.ds-card-label') as HTMLElement | null;
-      setLabelNode(labelEl ? (labelEl.cloneNode(true) as HTMLElement) : null);
       // Hero ART loads only when enabled for this shelf AND the game changed.
       // `forceCssLoader` promotes a shelf (full-page + label) WITHOUT forcing
       // hero art — the per-shelf / global hero-art setting is respected.
@@ -668,7 +673,14 @@ function PerShelfHero({ containerRef, showArt, isFirstShelf, forceLayoutAsRecent
        had pre-regression. focusin still calls update synchronously so
        the hero swap visually tracks the focus change with no lag. */
     let updatePending: number | null = null;
-    const scheduleUpdate = () => {
+    const scheduleUpdate = (records?: MutationRecord[]) => {
+      /* Mounting the cloned label mutates this shelf too. Ignore mutations
+         contained entirely inside the overlay, otherwise cloning a label
+         schedules another clone forever. */
+      if (records?.length && records.every((record) => {
+        const target = record.target instanceof Element ? record.target : record.target.parentElement;
+        return !!target?.closest('.ds-promoted-hero-label');
+      })) return;
       if (updatePending != null) return;
       updatePending = requestAnimationFrame(() => {
         updatePending = null;
@@ -680,7 +692,7 @@ function PerShelfHero({ containerRef, showArt, isFirstShelf, forceLayoutAsRecent
     // online shelves — the card label's text changes from "#appid" to the
     // real name, which is neither a class nor a childList mutation.
     obs.observe(el, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'], characterData: true });
-    // Keep the label left-aligned with the focused card as Steam's inner
+    // Keep the label centered over the focused card as Steam's inner
     // ReactVirtualized grid scrolls. Scroll events do not bubble, but they do
     // cross the shelf in the capture phase; listening here also survives a
     // late fallback-to-native carousel replacement.
@@ -690,7 +702,7 @@ function PerShelfHero({ containerRef, showArt, isFirstShelf, forceLayoutAsRecent
       try {
         const sr = el.getBoundingClientRect();
         const cr = fc.getBoundingClientRect();
-        setLabelLeft(Math.max(0, Math.round(cr.left - sr.left)));
+        setLabelCenter(Math.max(0, Math.round(cr.left - sr.left + (cr.width / 2))));
       } catch {}
     };
     el.addEventListener('scroll', onRowScroll, { passive: true, capture: true });
@@ -819,10 +831,18 @@ function PerShelfHero({ containerRef, showArt, isFirstShelf, forceLayoutAsRecent
   const wantsDescriptionBelowLogo = enableDescription && !!overlayDescription && descriptionBelowLogo && hasFocusedApp;
   const showOverlayContainer = wantsLogo || wantsDescriptionBelowLogo;
   const hasArt = showArt && !!(slotA || slotB);
-  // `needsLabel` is the gameInfoAbove setting — show the focused game's info
-  // above the cards on ANY shelf that opted in (global applies to all shelves),
-  // not only the promoted first one.
-  const showLabel = needsLabel && !!labelNode;
+  // `needsLabel` is the gameInfoAbove setting. Match Steam's selected-item
+  // header by showing it only while this shelf owns card focus.
+  const showLabel = shouldShowGameInfoOverlay(needsLabel, !!labelNode, isShelfSelected);
+  /* Hide in-card labels only while this shelf's selected-item replacement is
+     visible. Inactive shelves must not retain stale headers between rows. */
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (showLabel) el.setAttribute('data-ds-info-above-ready', 'true');
+    else el.removeAttribute('data-ds-info-above-ready');
+    return () => el.removeAttribute('data-ds-info-above-ready');
+  }, [containerRef, showLabel]);
   if (!hasArt && !showLabel && !showOverlayContainer) return null;
   const themeBg = 'var(--obsidian-main-color,var(--ds-page-bg,rgb(0,0,0)))';
   /* "First-shelf" hero treatment — 70vh, opaque top, NO inter-shelf overlap.
@@ -1017,12 +1037,13 @@ function PerShelfHero({ containerRef, showArt, isFirstShelf, forceLayoutAsRecent
         className="ds-promoted-hero-label"
         style={{
           position: 'absolute',
-          left: labelLeft,
+          left: labelCenter,
           bottom: rowH,
+          transform: 'translateX(-50%)',
           zIndex: 20,
           pointerEvents: 'none',
           opacity: visible ? 1 : 0,
-          transition: 'opacity 0.4s cubic-bezier(0.17,0.45,0.14,0.83), left 0.2s ease',
+          transition: 'opacity 0.4s cubic-bezier(0.17,0.45,0.14,0.83)',
         }}
       />
     )}

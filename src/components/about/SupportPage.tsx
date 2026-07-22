@@ -1,17 +1,15 @@
 import React from 'react'
 import { Field, DialogButton, Focusable } from '../../runtime/host/decky'
 import { useTranslation } from 'react-i18next'
-import pkg from '../../../package.json'
 import { DocSection } from './DocSection'
 import { flowChildrenProps } from '../../core/steamOSVersion'
 import { logInfo } from '../../runtime/logger'
 import { openManagedModal } from '../qam/common/openManagedModal'
 import { ShowcaseModal } from '../qam/modals/ShowcaseModal'
 import { openBugReport } from '../../core/issueReport'
+import { getProjectLinks, getRuntimeVersionLabel } from '../../core/projectMetadata'
 
 const KOFI_URL = 'https://ko-fi.com/F2F61WE76V'
-const GITHUB_URL = 'https://github.com/santojon/Deck-Shelves'
-const RELEASES_URL = 'https://github.com/santojon/Deck-Shelves/releases'
 const DISCORD_URL = 'https://discord.gg/EChuVEDakk'
 const REDDIT_URL = 'https://www.reddit.com/r/DeckShelves/'
 
@@ -30,10 +28,11 @@ const openInBrowser = (url: string) => {
 
 export function SupportPage() {
   const { t } = useTranslation()
+  const projectLinks = getProjectLinks()
   const openKofi = () => openInBrowser(KOFI_URL)
-  const openGitHub = () => openInBrowser(GITHUB_URL)
+  const openGitHub = () => openInBrowser(projectLinks.sourceUrl)
   const reportIssue = () => { void openBugReport() }
-  const openReleases = () => openInBrowser(RELEASES_URL)
+  const openReleases = () => { if (projectLinks.releasesUrl) openInBrowser(projectLinks.releasesUrl) }
   const openDiscord = () => openInBrowser(DISCORD_URL)
   const openReddit = () => openInBrowser(REDDIT_URL)
   const openShowcase = () => openManagedModal((close) => <ShowcaseModal closeModal={close} />)
@@ -57,13 +56,15 @@ export function SupportPage() {
           >
             {t('about_learn_more_github')}
           </DialogButton>
-          <DialogButton
-            onClick={reportIssue}
-            onOKButton={reportIssue}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px 14px', width: 'auto' }}
-          >
-            {t('about_report_issue')}
-          </DialogButton>
+          {projectLinks.issuesUrl ? (
+            <DialogButton
+              onClick={reportIssue}
+              onOKButton={reportIssue}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px 14px', width: 'auto' }}
+            >
+              {t('about_report_issue')}
+            </DialogButton>
+          ) : null}
           <DialogButton
             onClick={openShowcase}
             onOKButton={openShowcase}
@@ -156,17 +157,19 @@ export function SupportPage() {
         bottomSeparator="none"
         description={
           <span style={{ ...labelStyle, textAlign: 'center', fontSize: 11, color: 'var(--ds-text-faint, #666)' }}>
-            {t('about_version')}: {pkg.version}
-            {' · '}
-            <a
-              role="button"
-              tabIndex={0}
-              onClick={openReleases}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openReleases() }}
-              style={{ color: 'var(--ds-link, #7aa9d6)', cursor: 'pointer', textDecoration: 'underline' }}
-            >
-              {t('about_other_versions')}
-            </a>
+            {t('about_version')}: {getRuntimeVersionLabel()}
+            {projectLinks.releasesUrl ? (<>
+              {' · '}
+              <a
+                role="button"
+                tabIndex={0}
+                onClick={openReleases}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openReleases() }}
+                style={{ color: 'var(--ds-link, #7aa9d6)', cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                {t('about_other_versions')}
+              </a>
+            </>) : null}
           </span>
         }
       />

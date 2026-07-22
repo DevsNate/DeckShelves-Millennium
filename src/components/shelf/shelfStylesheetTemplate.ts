@@ -14,6 +14,12 @@ export type ShelfStylesheetCtx = {
 };
 
 export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
+  /* CSS-only DOM-order stacking keeps the glow behavior available on a style
+     refresh; component JavaScript is not remounted by Steam's Alt+F5 path.
+     Sixty-four slots is intentionally well beyond the supported shelf count. */
+  const shelfStackRules = Array.from({ length: 64 }, (_, index) =>
+    `#deck-shelves-home-root .deck-shelves-root > .ds-shelf:nth-child(${index + 1}) { z-index: ${74 - index} !important; }`,
+  ).join('\n');
   return `
     :root {
       --ds-card-radius: ${ctx.cardRadius};
@@ -32,8 +38,27 @@ export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
       --ds-row-base-gap: ${ctx.cardGap}px;
     }
     #deck-shelves-home-root { margin-top: -32px !important; }
-    .deck-shelves-root { background: transparent; }
+    #deck-shelves-home-root .deck-shelves-root {
+      background: transparent;
+      isolation: auto !important;
+    }
     .Panel.ds-shelf { background: transparent !important; }
+    /* Let Steam's real capsule glow paint across the otherwise-black header
+       band of the following shelf. The Home root assigns descending stack
+       values in DOM order; text/cards in the next shelf remain interactive
+       above the page background while the previous glow is no longer cut at
+       the shelf boundary. */
+    #deck-shelves-home-root .deck-shelves-root > .ds-shelf {
+      overflow: visible !important;
+      position: relative !important;
+      z-index: 1 !important;
+    }
+    ${shelfStackRules}
+    #deck-shelves-home-root .deck-shelves-root > .ds-shelf .ds-row-scroll,
+    #deck-shelves-home-root .deck-shelves-root > .ds-shelf .ds-native-carousel-root,
+    #deck-shelves-home-root .deck-shelves-root > .ds-shelf .ReactVirtualized__Grid__innerScrollContainer {
+      overflow: visible !important;
+    }
     .ds-row-scroll { scrollbar-width: none; -ms-overflow-style: none; }
     .ds-row-scroll::-webkit-scrollbar { display: none; width: 0; height: 0; }
     [data-ds-recents-title-faded="true"] {
@@ -65,13 +90,17 @@ export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
     .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] [data-ds-native-card="true"] ._3bvCHoWj4rDdZr3mnKlXaf {
       top: 0 !important;
     }
-    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] [data-ds-native-card="true"] .ZkD6We6MqGbOsa9K3yiY3 {
+    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] .ds-shelf:not([data-ds-info-above="true"]) [data-ds-native-card="true"] .ZkD6We6MqGbOsa9K3yiY3 {
       position: static !important;
       top: auto !important;
+      /* The native focus depth grows the artwork past its layout box. Keep
+         the flowing label clear of that visual overhang without touching
+         Steam's label transform/opacity transition. */
+      margin-top: 8px !important;
     }
-    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] [data-ds-native-card="true"] .gpfocuswithin > .ZkD6We6MqGbOsa9K3yiY3,
-    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] [data-ds-native-card="true"] :hover ~ .ZkD6We6MqGbOsa9K3yiY3,
-    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] [data-ds-native-card="true"] .ZkD6We6MqGbOsa9K3yiY3._3tdVJpA0NVV1y7pIQ87DkB {
+    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] .ds-shelf:not([data-ds-info-above="true"]) [data-ds-native-card="true"] .gpfocuswithin > .ZkD6We6MqGbOsa9K3yiY3,
+    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] .ds-shelf:not([data-ds-info-above="true"]) [data-ds-native-card="true"] :hover ~ .ZkD6We6MqGbOsa9K3yiY3,
+    .deck-shelves-root[data-ds-art-hero-active="true"][data-ds-keep-shelves-stacked="true"] .ds-shelf:not([data-ds-info-above="true"]) [data-ds-native-card="true"] .ZkD6We6MqGbOsa9K3yiY3._3tdVJpA0NVV1y7pIQ87DkB {
       transform: translateY(-4px) !important;
       transition-delay: 0.14s !important;
       visibility: visible !important;
@@ -188,7 +217,7 @@ export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
        ".ds-card .ds-card-label" descendant so it does NOT also hide the
        cloned overlay label, which lives in .ds-promoted-hero-label and
        not inside a card. */
-    .ds-shelf[data-ds-info-above="true"] .ds-card .ds-card-label {
+    .ds-shelf[data-ds-info-above-ready="true"] .ds-card .ds-card-label {
       display: none !important;
     }
     .ds-promoted-hero-label .ds-card-label {
@@ -199,6 +228,32 @@ export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
       padding-top: 0 !important;
       opacity: 1 !important;
       display: block !important;
+    }
+    /* Native-size cards keep Steam's ORIGINAL label element mounted inside
+       the native capsule. Restore the exact Recent Games Art Hero placement
+       that the compact-row compatibility reset above intentionally disables.
+       No cloned text, font override, or compensating scale is involved. */
+    #deck-shelves-home-root .ds-shelf[data-ds-info-above="true"] .ds-native-carousel-root {
+      /* The borrowed native carousel normally clips at the artwork row. Make
+         room above it for Steam's own absolute label while retaining hidden
+         overflow, which its horizontal virtualization/scrolling requires. */
+      --ds-info-above-space: calc(0px - var(--met-game-carousel-font-height, -3.5em));
+      height: calc(var(--ds-native-carousel-height) + var(--ds-info-above-space)) !important;
+      margin-top: calc(4px - var(--ds-info-above-space)) !important;
+      padding-top: calc(12px + var(--ds-info-above-space)) !important;
+      overflow: hidden !important;
+    }
+    /* Only provide the above-card containing position. Steam owns the native
+       opacity/transform transition, and Art Hero remains free to override its
+       focused transform and reveal delay exactly as it does in Recent Games. */
+    #deck-shelves-home-root .ds-shelf[data-ds-info-above="true"] .ds-card--native .gpfocuswithin > .ZkD6We6MqGbOsa9K3yiY3,
+    #deck-shelves-home-root .ds-shelf[data-ds-info-above="true"] .ds-card--native :hover ~ .ZkD6We6MqGbOsa9K3yiY3,
+    #deck-shelves-home-root .ds-shelf[data-ds-info-above="true"] .ds-card--native .ZkD6We6MqGbOsa9K3yiY3._3tdVJpA0NVV1y7pIQ87DkB,
+    #deck-shelves-home-root .ds-shelf[data-ds-info-above="true"] .ds-card--native.gpfocus .ds-native-game-info-root,
+    #deck-shelves-home-root .ds-shelf[data-ds-info-above="true"] .ds-card--native:focus-within .ds-native-game-info-root,
+    #deck-shelves-home-root .ds-shelf[data-ds-info-above="true"] .ds-card--native:hover .ds-native-game-info-root {
+      top: var(--met-game-carousel-font-height, -3.5em) !important;
+      position: absolute !important;
     }
     /* Match the native ArtHero recents game-info overlay exactly (values
        read via CDP from the native recents shelf):
@@ -332,8 +387,10 @@ export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
        expose its overflowing label one frame before focus leaves the source.
        Keep label ownership with the source until Steam completes the focus
        hand-off so adjacent native titles never paint over one another. */
-    #deck-shelves-home-root .ds-card--native[data-ds-suppress-native-label="true"] .ds-native-game-name,
-    #deck-shelves-home-root .ds-card--native[data-ds-suppress-native-label="true"] .ds-native-status-line {
+    #deck-shelves-home-root .ds-card--native:is([data-ds-suppress-native-label="true"], [data-ds-hover-suppress-native-label="true"]) .ZkD6We6MqGbOsa9K3yiY3,
+    #deck-shelves-home-root .ds-card--native:is([data-ds-suppress-native-label="true"], [data-ds-hover-suppress-native-label="true"]) .ds-native-game-info-root,
+    #deck-shelves-home-root .ds-card--native:is([data-ds-suppress-native-label="true"], [data-ds-hover-suppress-native-label="true"]) .ds-native-game-name,
+    #deck-shelves-home-root .ds-card--native:is([data-ds-suppress-native-label="true"], [data-ds-hover-suppress-native-label="true"]) .ds-native-status-line {
       visibility: hidden !important;
       opacity: 0 !important;
     }

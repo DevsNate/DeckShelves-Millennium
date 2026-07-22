@@ -46,7 +46,10 @@ def _sanitize_visibility(raw: Any) -> Optional[Dict[str, Any]]:
 
 def _sanitize_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     """Preserve Millennium-only visual settings around the upstream sanitizer."""
+    if not isinstance(settings, dict):
+        settings = {}
     clean = _sanitize_settings_base(settings)
+    clean["schemaVersion"] = 1
     clean["globalMatchNativeSize"] = bool(settings.get("globalMatchNativeSize", True))
     clean["fadeRecentsTitle"] = bool(settings.get("fadeRecentsTitle", False))
     clean["keepShelvesStacked"] = bool(settings.get("keepShelvesStacked", True))

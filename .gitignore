@@ -2,6 +2,7 @@
 node_modules/
 dist/
 .millennium/Dist/
+.millennium-package/
 out/
 *.log
 .DS_Store

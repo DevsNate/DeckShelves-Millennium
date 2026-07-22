@@ -1,6 +1,16 @@
 import { describe, it, expect } from 'vitest'
 import { ShelfSchema, SettingsSchema, SmartShelfSchema } from '../../types'
 
+describe('SettingsSchema schemaVersion', () => {
+  it('accepts an explicit persisted schema version', () => {
+    expect(SettingsSchema.parse({ schemaVersion: 1 }).schemaVersion).toBe(1)
+  })
+
+  it('rejects invalid schema versions', () => {
+    expect(SettingsSchema.safeParse({ schemaVersion: 0 }).success).toBe(false)
+  })
+})
+
 describe('ShelfSchema hideShelfTitle', () => {
   it('defaults to false when absent', () => {
     const r = ShelfSchema.parse({

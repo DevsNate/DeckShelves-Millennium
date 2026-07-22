@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import pkg from "../../../package.json";
+import { getRuntimeVersion, getRuntimeVersionLabel } from "../../core/projectMetadata";
 
 /* Standardized, unobtrusive footer that surfaces the running plugin version.
    Rendered at the bottom of the QAM panel and every full page (About /
@@ -8,10 +8,11 @@ import pkg from "../../../package.json";
    is safe to drop into the gamepad-navigated QAM without altering focus flow. */
 export function VersionFooter() {
   const { t } = useTranslation();
+  const version = getRuntimeVersion();
   return (
     <div
       className="ds-version-footer"
-      data-ds-version={pkg.version}
+      data-ds-version={version}
       style={{
         textAlign: "center",
         padding: "6px 12px calc(env(safe-area-inset-bottom, 0px) + 8px)",
@@ -20,7 +21,7 @@ export function VersionFooter() {
         color: "var(--ds-text-faint, #6b7076)",
       }}
     >
-      Deck Shelves · {t("about_version")} {pkg.version}
+      Deck Shelves · {t("about_version")} {getRuntimeVersionLabel()}
     </div>
   );
 }

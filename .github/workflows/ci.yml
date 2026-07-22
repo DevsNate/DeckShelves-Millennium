@@ -136,3 +136,37 @@ jobs:
           SUBMIT_TOKEN: ${{ secrets.SUBMIT_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.SUBMIT_TOKEN || secrets.GITHUB_TOKEN }}
         run: bash scripts/ci/commit-report.sh
+
+  millennium:
+    name: Millennium port
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Lua syntax checker
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+
+      - name: Validate, test, build, and package Millennium port
+        run: pnpm run check:millennium
+
+      - name: Upload Millennium release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deck-shelves-millennium-${{ github.sha }}
+          path: "Deck Shelves v*.zip"
