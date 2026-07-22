@@ -1142,7 +1142,7 @@ export function browseScreenshotsForApp(appid: number): boolean {
   } catch {}
   try {
     if (typeof sc?.Apps?.BrowseScreenshotsForApp === "function") {
-      sc.Apps.BrowseScreenshotsForApp(appid);
+      sc?.Apps?.BrowseScreenshotsForApp?.(appid);
       return true;
     }
   } catch {}
