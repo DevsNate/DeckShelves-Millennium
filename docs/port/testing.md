@@ -28,16 +28,28 @@ pnpm run build:release
 Run against the installed Millennium plugin after every upstream import or
 Steam UI compatibility change:
 
+The port-specific cases and their root causes are indexed in
+[`downstream-invariants.md`](downstream-invariants.md); that ledger is part of
+this gate, not optional background reading.
+
 - Millennium backend reaches ready state without Lua errors.
 - `settings.json` loads and an unchanged save round-trips exactly.
 - QAM panel mounts and can open the full Settings route.
 - Shelves mount after native Recent Games.
 - D-pad down moves from native content into the first shelf.
 - Horizontal navigation, More, Refresh, and card activation work.
+- Keyboard and controller Right pan beyond the initially visible carousel cards
+  at the same pace as native Recent Games.
+- Native titles/status remain present, and colored focus shadows cross shelf
+  boundaries without a hard horizontal seam.
 - Returning from app details restores focus to the expected card/shelf.
 - Hidden Home Tabs cannot receive controller focus, including after delayed
   Steam navigation-tree replacement.
+- With Home Tabs hidden, Down on the final shelf keeps the current card focused,
+  including after closing mouse and controller card menus.
 - Disabling the option or unloading the plugin restores native tabs.
+- Plugin load and optional backend probes never flash a console or steal focus
+  from Steam on Windows.
 - ArtHero keeps each Deck Shelves carousel compact when compatibility is on.
 - QAM, Steam menu, and home remount correctly after a Steam UI reload.
 

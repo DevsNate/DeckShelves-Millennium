@@ -7,6 +7,10 @@ Shared feature and UI code should stay usable by upstream Decky. Loader,
 backend, packaging, deployment, and live-runtime differences belong at an
 explicit host boundary.
 
+Behavior that must survive upstream imports is indexed in
+[`downstream-invariants.md`](downstream-invariants.md). Treat that ledger and
+its named regression tests as part of the Millennium-owned architecture.
+
 ## Ownership map
 
 | Area | Owner | Update rule |

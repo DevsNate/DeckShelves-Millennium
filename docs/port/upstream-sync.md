@@ -3,6 +3,11 @@
 The port preserves upstream merge ancestry. Import each tagged Deck Shelves
 release as an isolated merge commit; do not squash the release into port work.
 
+Before resolving any merge, read the Millennium preservation ledger in
+[`downstream-invariants.md`](downstream-invariants.md). Every listed invariant
+must be reviewed after the import, including files that merged without a
+textual conflict.
+
 ## Remote setup
 
 For a published port repository, use:
@@ -34,6 +39,10 @@ Resolve conflicts using the ownership table in `architecture.md`. Keep the
 merge commit limited to the upstream import. Put required Millennium
 adaptations in separate commits after the merge.
 
+Use `downstream-invariants.md` as the adaptation checklist. A removed protected
+test, a resurrected rejected approach, or a changed live behavior is a port
+regression even when the merged project builds successfully.
+
 Then update `ports/millennium/upstream.json`:
 
 - `upstream.version`
@@ -59,6 +68,7 @@ Review these areas even when Git reports no textual conflict:
 - `src/runtime/homePatch.tsx` and Home Tabs navigation suppression.
 - `src/components/HomeInject.tsx` and `DeckRow.tsx` native focus props.
 - Native card/carousel rendering and CSS Loader/ArtHero compatibility.
+- Every protected path and rejected approach in `downstream-invariants.md`.
 - Backend RPC additions or renamed parameters.
 - Settings schema/default/sanitizer changes.
 - Update, support, and issue-report URLs.

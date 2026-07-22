@@ -5,6 +5,12 @@ documented in `CHANGELOG.md` and `RELEASE_NOTES.md`.
 
 ## [Unreleased]
 
+### Maintenance
+
+- Added a downstream-invariant ledger and upstream-sync checklist covering the
+  live-tested Windows focus, native carousel, label, shadow, hidden Home Tabs,
+  and context-menu behaviors that must survive future Decky imports.
+
 ## [3.1.0] - 2026-07-22
 
 ### Added
