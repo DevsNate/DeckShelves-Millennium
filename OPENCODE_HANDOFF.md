@@ -8,49 +8,45 @@ Updated: 2026-07-31 (America/Chicago)
 - The three new public settings fields were committed and pushed as
   `77c9291092aed093a609946d79cb2f5aec77a705`.
 - The plugin now points its `api` submodule at that fork and revision.
-- Release preparation continues on `codex/release-3.1.1-prep`; no public
-  release tag has been created.
+- Release preparation is committed at `2a8d89d` on
+  `codex/release-3.1.1-prep` and PR #2 has passing CI.
+- The `3.1.1` candidate is deployed with source/live hash parity, reports
+  `pluginVersion: 3.1.1`, and passed the complete manual Steam acceptance
+  matrix on 2026-07-31.
+- No public release tag has been created.
 
 ## Read this first
 
-This workspace contains the only complete copy of the current unreleased work.
-Do **not** run `git reset`, `git clean`, `git checkout --`, reclone over this
-directory, or update/reset submodules before preserving the changes.
-
-The root working tree is dirty, and the `api` submodule is also dirty while
-checked out at a detached commit. A normal root commit cannot capture dirty
-submodule contents. Resolve the submodule deliberately before attempting a
-release.
+The candidate is committed and pushed. Keep the root repository and pinned
+submodules together; do not rewrite the release-prep branch or move submodule
+revisions without rerunning the complete validation and live parity checks.
 
 ## Objective
 
-Finish, live-validate, commit, and publish the next Deck Shelves Millennium
-release. The selected next public version is `millennium-v3.1.1`; the
-working tree adds multiple user-facing features and behavior changes. The user
-has not approved or created that release yet.
+Merge and publish the validated Deck Shelves Millennium `millennium-v3.1.1`
+candidate after explicit user approval. The user has completed live acceptance
+testing but has not approved or created the public release tag yet.
 
 ## Repository snapshot
 
 - Workspace: `C:\Users\Nate\Documents\Codex Projects\DeckShelves-Millennium`
-- Branch: `main`
-- HEAD: `bdd9d8de43ab902edd46afe6a2dbd4ef13b538d1`
-- HEAD is also the existing tag: `millennium-v3.1.0`
+- Branch: `codex/release-3.1.1-prep`
+- HEAD: `2a8d89dbd0e507a406d67992e91811b5b370a49b`
+- Base `main`: `bdd9d8de43ab902edd46afe6a2dbd4ef13b538d1`
 - Root remote: `https://github.com/DevsNate/DeckShelves-Millennium.git`
-- Root `main` matched `origin/main` when this handoff was written.
+- Draft PR: `https://github.com/DevsNate/DeckShelves-Millennium/pull/2`
 - Latest published release: `millennium-v3.1.0` / `Deck Shelves v3.1.0`
-- Current port metadata and manifest still say `3.1.0`.
-- Before adding this handoff, the tracked diff contained 53 entries with about
-  1,176 insertions and 94 deletions, plus 10 untracked implementation/test
-  files.
+- Candidate port metadata and manifest say `3.1.1` while root `package.json`
+  intentionally remains at upstream Deck Shelves `3.1.0`.
+- The working tree and `api` submodule are clean.
 
 Inspect the exact current state rather than relying only on this snapshot:
 
 ```powershell
 git status --short --branch
-git diff --stat
 git diff --check
 git -C api status --short --branch
-git -C api diff -- src/types.ts
+git submodule status
 ```
 
 ## User expectations and project boundaries
@@ -154,7 +150,7 @@ Primary files:
 - `src/runtime/diagnosticsInfo.ts`
 - `src/core/settingsSnapshot.ts` (new)
 - `src/core/pluginApi.ts`
-- `api/src/types.ts` inside the dirty submodule
+- `api/src/types.ts` inside the pinned API submodule
 
 The three settings are wired through defaults, Zod schema, Python sanitizer,
 QAM and sidecar controls, hidden-settings categories, diagnostics, and the
@@ -200,36 +196,25 @@ src/test/components/shelfTitleOpacityCascade.test.ts
 src/test/steam/resolveTabChildFilter.test.ts
 ```
 
-`OPENCODE_HANDOFF.md` itself will also appear as untracked until committed.
+These files are committed as part of the release candidate.
 
-## Critical `api` submodule issue
+## Resolved `api` submodule integration
 
 Current submodule state:
 
 - Path: `api`
-- Recorded/detached commit: `34dc141521f749f960e9e36e9747b17139de4220`
-- Configured remote: `https://github.com/santojon/Deck-Shelves-API.git`
-- Dirty file: `api/src/types.ts`
+- Pinned commit: `77c9291092aed093a609946d79cb2f5aec77a705`
+- Configured remote: `https://github.com/DevsNate/Deck-Shelves-API.git`
+- State: clean and reachable from the public fork's `main` branch.
 - Change: adds the three new booleans to `PublicSettingsSnapshot`.
 
-The root release workflow checks out submodules recursively. It will only see a
-committed gitlink SHA, never the dirty `api/src/types.ts` content currently on
-disk. Before committing the root release, choose one of these deliberate paths:
-
-1. Preferred: create/use a reachable `DevsNate` fork of Deck-Shelves-API,
-   commit the interface change there, update `.gitmodules` if appropriate,
-   update the root gitlink, and update `ports/millennium/upstream.json` with the
-   new API submodule SHA.
-2. If the public API should not change, redesign the root snapshot typing so
-   this submodule edit is unnecessary, then restore the submodule only after
-   confirming the replacement compiles and tests pass.
-
-Do not simply stage the root `api` path while it remains dirty; that does not
-record the edited file.
+The root gitlink, `.gitmodules`, and `ports/millennium/upstream.json` all record
+the forked revision, so clean recursive CI checkouts receive the same API
+contract used by the validated build.
 
 ## Validation already completed
 
-On 2026-07-31, this exact dirty working tree passed:
+On 2026-07-31, the committed `3.1.1` candidate passed:
 
 ```powershell
 pnpm run check:millennium
@@ -260,8 +245,7 @@ Non-blocking warnings observed:
 - pnpm warned that `onlyBuiltDependencies` and `overrides` in the `api` and
   `host` package files do not take effect outside the workspace root.
 - No local Lua/LuaJIT executable was found, so local Lua syntax validation was
-  skipped. The release workflow installs Lua 5.4, and `backend/main.lua` is
-  unchanged in this working tree.
+  skipped. GitHub CI installed Lua 5.4 and passed the complete gate.
 
 ## Live installed state at handoff
 
@@ -274,42 +258,31 @@ C:\Program Files (x86)\Steam\millennium\plugins\deck-shelves
 Steam CEF remote debugging was available at `127.0.0.1:8080`, with a live
 `SharedJSContext` target at `https://steamloopback.host/routes/library/home`.
 
-The freshly built source was **not** fully synced to the installed plugin:
+The final candidate was synced and activated through `SharedJSContext`:
 
 | File | Source/live match | Source SHA-256 | Live SHA-256 |
 | --- | --- | --- | --- |
-| `.millennium/Dist/index.js` | No | `9D840B5795834D753F86AE41544A13E5756AAF0ACC4465AEFF35C57108BD2826` | `57D474B72E0BD7C5CFDBC7AA2833AD3E8D94BABDE203D6BEC7BD78B63BEF1BB6` |
-| `sanitizer.py` | No | `ECDA761E8EBCEA9E2DAF2B3FDE4EE8327A6D05D7DA8DD971ECA856371E62F078` | `2EA9425DBB1A7D1CD9D9542E8C8641AD66318CDD0CA9E9AD087999CFDA860C65` |
-| `backend/main.lua` | Yes | `8C3D7B1AE7B053C5DC323E3DAFCA8128EC6EB68A6B68BCC2156DBEC61B6D96A0` | same |
-| `ports/millennium/plugin.json` -> live `plugin.json` | Yes | `87CF317ABD78BB5EEF48845357B5AF416086A621F9BAFCF47ADCC6877E838D57` | same |
+| `.millennium/Dist/index.js` | Yes | `4291A375D4EFC57E8D4716F95AA2FF635FFB8FBCD6263FEA35F8B58C94F5A620` | same |
+| `backend/main.lua` | Yes | `F56DE5764A4BD64D6C5ABEF228345F2D1C12896DA1396C328FBEF50A9FC80E2D` | same |
+| `ports/millennium/plugin.json` -> live `plugin.json` | Yes | `0C1DA16DC7B18B51417CE06B103CABF27E31E0B3030DF424092E7B12F7525B02` | same |
+| `ports/millennium/upstream.json` -> live `port/upstream.json` | Yes | `1043445839FD8F40389FEF3F65599EE2A6AB557F8B6D1B646162FEA33F38720C` | same |
 
-Therefore, automated checks are green, but the combined current work has not
-received final live acceptance testing.
+The runtime reported `pluginVersion: 3.1.1`. The user completed every item in
+the live acceptance matrix below and reported that all checks passed.
 
-## Release blockers
+## Release completion status
 
-1. Preserve/commit the dirty `api` submodule change at a reachable SHA or
-   remove the need for that edit.
-2. Commit all root modifications and the 10 new implementation/test files.
-3. Bump `ports/millennium/upstream.json` `portVersion` and
-   `ports/millennium/plugin.json` `version` to the chosen new version.
-4. Do **not** casually bump root `package.json`: its `3.1.0` version records the
-   imported upstream version and `validate-millennium.mjs` requires it to match
-   `upstream.version`.
-5. Expand `CHANGELOG_MILLENNIUM.md` `[Unreleased]` into real release notes for
-   the context-menu, title behavior, Mini Carousel spacing, settings, and
-   navigation changes.
-6. Deploy the candidate to the live Millennium install and complete the manual
-   Steam Home test matrix below.
-7. Re-run the full gate from the clean, committed tree and push it so GitHub CI
-   validates what will actually be tagged.
-8. Only then create/push `millennium-v3.1.1` (or another explicitly chosen
-   version). The release workflow publishes on `millennium-v*` tags and checks
-   that the tag exactly matches `portVersion`.
+All implementation, API, metadata, packaging, CI, deployment, and manual live
+acceptance blockers are resolved. Remaining actions require explicit approval:
+
+1. Merge PR #2 into `main`.
+2. Create and push `millennium-v3.1.1` from the merged release commit.
+3. Verify the release workflow publishes `Deck Shelves v3.1.1.zip` and its
+   SHA-256 checksum.
 
 ## Required live acceptance matrix
 
-At minimum verify all of the following in the actual Steam Big Picture Home:
+The user verified all of the following in the actual Steam Big Picture Home:
 
 - Controller Menu and mouse right-click on the same native-backed Deck Shelves
   card open the same full Steam application menu.
@@ -365,21 +338,13 @@ git status --short --branch
 
 Use this as the opening request:
 
-> Read `OPENCODE_HANDOFF.md` completely. Preserve the current dirty root and
-> `api` submodule state. First audit the handoff against `git status`, the root
-> diff, and `git -C api diff`. Then resolve the API submodule release blocker,
-> prepare the selected `millennium-v3.1.1` metadata and changelog, deploy and
-> complete the documented live Steam acceptance matrix, rerun
-> `pnpm run check:millennium`, and stop for my approval before publishing the
-> GitHub release.
+> Read `OPENCODE_HANDOFF.md` completely. Verify the clean
+> `codex/release-3.1.1-prep` branch, pinned submodules, PR #2 CI, and current
+> release metadata. All automated and live acceptance checks have passed. Stop
+> for my explicit approval before merging, pushing `millennium-v3.1.1`, or
+> publishing the GitHub release.
 
 ## Stop points requiring user approval
 
-- Do not discard or rewrite any current implementation change without showing
-  the reason and proposed replacement.
-- Ask before creating a new GitHub API repository/fork if one does not already
-  exist.
-- Ask before deploying over the installed plugin if the user has started using
-  a different live build.
 - Stop for explicit approval before pushing the final release tag or publishing
   the GitHub release.
