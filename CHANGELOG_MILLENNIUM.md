@@ -5,7 +5,7 @@ documented in `CHANGELOG.md` and `RELEASE_NOTES.md`.
 
 ## [Unreleased]
 
-## [3.2.0] - 2026-07-31
+## [3.1.1] - 2026-07-31
 
 ### Added
 

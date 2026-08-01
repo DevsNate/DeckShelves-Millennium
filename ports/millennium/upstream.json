@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "portName": "Deck Shelves Millennium",
-  "portVersion": "3.2.0",
+  "portVersion": "3.1.1",
   "portRepository": "https://github.com/DevsNate/DeckShelves-Millennium",
   "minimumMillenniumVersion": "3.0.0",
   "upstream": {

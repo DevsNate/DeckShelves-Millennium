@@ -8,7 +8,7 @@ Updated: 2026-07-31 (America/Chicago)
 - The three new public settings fields were committed and pushed as
   `77c9291092aed093a609946d79cb2f5aec77a705`.
 - The plugin now points its `api` submodule at that fork and revision.
-- Release preparation continues on `codex/release-3.2.0-prep`; no public
+- Release preparation continues on `codex/release-3.1.1-prep`; no public
   release tag has been created.
 
 ## Read this first
@@ -25,7 +25,7 @@ release.
 ## Objective
 
 Finish, live-validate, commit, and publish the next Deck Shelves Millennium
-release. The recommended next public version is `millennium-v3.2.0` because the
+release. The selected next public version is `millennium-v3.1.1`; the
 working tree adds multiple user-facing features and behavior changes. The user
 has not approved or created that release yet.
 
@@ -303,7 +303,7 @@ received final live acceptance testing.
    Steam Home test matrix below.
 7. Re-run the full gate from the clean, committed tree and push it so GitHub CI
    validates what will actually be tagged.
-8. Only then create/push `millennium-v3.2.0` (or another explicitly chosen
+8. Only then create/push `millennium-v3.1.1` (or another explicitly chosen
    version). The release workflow publishes on `millennium-v*` tags and checks
    that the tag exactly matches `portVersion`.
 
@@ -368,7 +368,7 @@ Use this as the opening request:
 > Read `OPENCODE_HANDOFF.md` completely. Preserve the current dirty root and
 > `api` submodule state. First audit the handoff against `git status`, the root
 > diff, and `git -C api diff`. Then resolve the API submodule release blocker,
-> prepare the recommended `millennium-v3.2.0` metadata and changelog, deploy and
+> prepare the selected `millennium-v3.1.1` metadata and changelog, deploy and
 > complete the documented live Steam acceptance matrix, rerun
 > `pnpm run check:millennium`, and stop for my approval before publishing the
 > GitHub release.

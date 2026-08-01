@@ -744,7 +744,7 @@ function get_wishlist(community_url)
     local url = "https://api.steampowered.com/IWishlistService/GetWishlist/v1/?steamid=" .. steam_id64
     local response, err = http.get(url, {
         headers = { ["Accept"] = "application/json" }, timeout = 15,
-        user_agent = "Deck-Shelves-Millennium/3.1.0", follow_redirects = true, verify_ssl = true,
+        user_agent = "Deck-Shelves-Millennium/3.1.1", follow_redirects = true, verify_ssl = true,
     })
     if not response then return json.encode({ ok = false, error = tostring(err or "request failed") }) end
     local data = decode(response.body)

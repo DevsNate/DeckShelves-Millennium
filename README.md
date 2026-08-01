@@ -22,7 +22,7 @@ using a Millennium bootstrap, Lua backend, and Windows-focused packaging.
 
 ## Install
 
-1. Download **Deck Shelves v3.1.0.zip** from the
+1. Download **Deck Shelves v3.1.1.zip** from the
    [latest release](https://github.com/DevsNate/DeckShelves-Millennium/releases/latest).
 2. Extract the included `deck-shelves` directory into Millennium's plugins
    directory.
