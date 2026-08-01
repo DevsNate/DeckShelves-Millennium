@@ -33,6 +33,8 @@ import { patchShelfInSettings } from "../domain/settings";
 import { PerShelfHero } from "./shelf/PerShelfHero";
 import { NativeShelfCarousel, useNativeCarouselResolution } from "./shelf/NativeShelfCarousel";
 import { shouldHandleDownAtHiddenHomeTabsBoundary } from "../runtime/homeTabNavigation";
+import { installShelfTitleAutoHide } from "./shelf/shelfTitleBehavior";
+import { miniCarouselTitleGapCompensation } from "./shelf/miniCarouselSpacing";
 
 function isScrollableEl(el: HTMLElement): boolean {
   try {
@@ -79,7 +81,7 @@ export function _labelOverhangPx(args: {
   return nativeBottom + description;
 }
 
-function DeckRowImpl({ title, items, shelfId, removableSet, matchNativeSize = false, highlightFirst = false, highlightAll = false, highlightedAppIds, hideStatusLine = false, hideNewBadge = false, hideDiscountBadge = false, hideCompatIcons = false, hideNonSteamBadge = false, hideShelfTitle = false, hideGameNames = false, hideInstallIndicator = false, enableLogo = false, enableIcon = false, enableDescription = false, descriptionBelowLogo = false, logoBelowShelf = false, logoPosition = 'left', descriptionPosition = 'left', logoSize = 100, logoTopOffset = 20, iconVerticalAlign = 'top', shelfTitlePosition = 'left', gameNamePosition = 'left', playtimePosition = 'left', descriptionHeight = 2, descriptionLogoGap = 10, descriptionScale = 1, forceExpanded = false, fullPageLayoutOnly = false, pinScrollTop = false, forceLayoutAsRecents = false, heroEnabled = false, heroLabelMount = false, infoAbove = false, friendsOverlay = false, friendsOverlayRecent = false, forceCollapsed = false, autoCollapseWhenEmpty = false }: { title?: string; items: DeckRowItem[]; shelfId?: string; removableSet?: Set<number>; matchNativeSize?: boolean; highlightFirst?: boolean; highlightAll?: boolean; highlightedAppIds?: number[]; hideStatusLine?: boolean; hideNewBadge?: boolean; hideDiscountBadge?: boolean; hideCompatIcons?: boolean; hideNonSteamBadge?: boolean; hideShelfTitle?: boolean; hideGameNames?: boolean; hideInstallIndicator?: boolean; enableLogo?: boolean; enableIcon?: boolean; enableDescription?: boolean; descriptionBelowLogo?: boolean; logoBelowShelf?: boolean; logoPosition?: 'left' | 'center' | 'right'; descriptionPosition?: 'left' | 'center' | 'right'; logoSize?: number; logoTopOffset?: number; iconVerticalAlign?: 'top' | 'center' | 'bottom'; shelfTitlePosition?: 'left' | 'center' | 'right'; gameNamePosition?: 'left' | 'center' | 'right'; playtimePosition?: 'left' | 'center' | 'right'; descriptionHeight?: number; descriptionLogoGap?: number; descriptionScale?: number; forceExpanded?: boolean; fullPageLayoutOnly?: boolean; pinScrollTop?: boolean; forceLayoutAsRecents?: boolean; heroEnabled?: boolean; heroLabelMount?: boolean; infoAbove?: boolean; friendsOverlay?: boolean; friendsOverlayRecent?: boolean; forceCollapsed?: boolean; autoCollapseWhenEmpty?: boolean }) {
+function DeckRowImpl({ title, items, shelfId, removableSet, miniCarouselSpacingScale = 1, autoHideShelfTitles = false, matchNativeSize = false, highlightFirst = false, highlightAll = false, highlightedAppIds, hideStatusLine = false, hideNewBadge = false, hideDiscountBadge = false, hideCompatIcons = false, hideNonSteamBadge = false, hideShelfTitle = false, hideGameNames = false, hideInstallIndicator = false, enableLogo = false, enableIcon = false, enableDescription = false, descriptionBelowLogo = false, logoBelowShelf = false, logoPosition = 'left', descriptionPosition = 'left', logoSize = 100, logoTopOffset = 20, iconVerticalAlign = 'top', shelfTitlePosition = 'left', gameNamePosition = 'left', playtimePosition = 'left', descriptionHeight = 2, descriptionLogoGap = 10, descriptionScale = 1, forceExpanded = false, fullPageLayoutOnly = false, pinScrollTop = false, forceLayoutAsRecents = false, heroEnabled = false, heroLabelMount = false, infoAbove = false, friendsOverlay = false, friendsOverlayRecent = false, forceCollapsed = false, autoCollapseWhenEmpty = false }: { title?: string; items: DeckRowItem[]; shelfId?: string; removableSet?: Set<number>; miniCarouselSpacingScale?: number; autoHideShelfTitles?: boolean; matchNativeSize?: boolean; highlightFirst?: boolean; highlightAll?: boolean; highlightedAppIds?: number[]; hideStatusLine?: boolean; hideNewBadge?: boolean; hideDiscountBadge?: boolean; hideCompatIcons?: boolean; hideNonSteamBadge?: boolean; hideShelfTitle?: boolean; hideGameNames?: boolean; hideInstallIndicator?: boolean; enableLogo?: boolean; enableIcon?: boolean; enableDescription?: boolean; descriptionBelowLogo?: boolean; logoBelowShelf?: boolean; logoPosition?: 'left' | 'center' | 'right'; descriptionPosition?: 'left' | 'center' | 'right'; logoSize?: number; logoTopOffset?: number; iconVerticalAlign?: 'top' | 'center' | 'bottom'; shelfTitlePosition?: 'left' | 'center' | 'right'; gameNamePosition?: 'left' | 'center' | 'right'; playtimePosition?: 'left' | 'center' | 'right'; descriptionHeight?: number; descriptionLogoGap?: number; descriptionScale?: number; forceExpanded?: boolean; fullPageLayoutOnly?: boolean; pinScrollTop?: boolean; forceLayoutAsRecents?: boolean; heroEnabled?: boolean; heroLabelMount?: boolean; infoAbove?: boolean; friendsOverlay?: boolean; friendsOverlayRecent?: boolean; forceCollapsed?: boolean; autoCollapseWhenEmpty?: boolean }) {
   const visuallyForced = forceExpanded || forceLayoutAsRecents;
   /* 100vh layout fires for BOTH real recents-replacement (`forceExpanded`)
      and per-shelf full-page intent (`fullPageLayoutOnly`). Only the real
@@ -154,6 +156,14 @@ function DeckRowImpl({ title, items, shelfId, removableSet, matchNativeSize = fa
   // shelf (visuallyForced) is never auto-collapsed.
   const autoCollapsed = forceCollapsed || (autoCollapseWhenEmpty && items.length === 0);
   const collapsed = visuallyForced ? false : (collapsedState || autoCollapsed);
+
+  useEffect(() => {
+    const titleElement = titleRef.current;
+    const rowElement = rowRef.current;
+    if (!autoHideShelfTitles || collapsed || hideShelfTitle || !titleElement || !rowElement) return;
+    return installShelfTitleAutoHide(titleElement, rowElement);
+  }, [autoHideShelfTitles, collapsed, hideShelfTitle, items.length]);
+
   const [nativeRowClass, setNativeRowClass] = useState('');
   const nativeCarouselResolution = useNativeCarouselResolution();
   const nativeCarouselActiveRef = useRef(false);
@@ -187,6 +197,15 @@ function DeckRowImpl({ title, items, shelfId, removableSet, matchNativeSize = fa
     return { w, h, gap, featW, featH, artH, featArtH };
   }, [matchNativeSize, nativeDimsVersion]);
   const { w: effectiveW, h: effectiveH, gap: effectiveGap, featW: effectiveFeaturedW, featH: effectiveFeaturedH, artH: effectiveArtH, featArtH: effectiveFeaturedArtH } = dims;
+  const effectiveMiniCarouselSpacingScale = Number.isFinite(miniCarouselSpacingScale)
+    ? Math.max(0.5, Math.min(1.5, miniCarouselSpacingScale))
+    : 1;
+  const nativeCarouselViewportHeight = effectiveH + 82;
+  const miniCarouselRowHeight = Math.round(nativeCarouselViewportHeight * effectiveMiniCarouselSpacingScale * 1000) / 1000;
+  const miniCarouselTitleGap = miniCarouselTitleGapCompensation(
+    nativeCarouselViewportHeight,
+    effectiveMiniCarouselSpacingScale,
+  );
 
   /* Per-shelf effective-dimension vars. When matchNativeSize is on, the cards
      size off the live native dims (root --ds-native-* vars); when off, the
@@ -746,7 +765,7 @@ function DeckRowImpl({ title, items, shelfId, removableSet, matchNativeSize = fa
             data-ds-title-position={shelfTitlePosition}
             onClick={visuallyForced ? undefined : toggleCollapse}
             style={{
-              marginBottom: 8,
+              marginBottom: 8 + miniCarouselTitleGap,
               paddingLeft: "2.8vw",
               paddingRight: "2.8vw",
               display: "flex",
@@ -773,7 +792,7 @@ function DeckRowImpl({ title, items, shelfId, removableSet, matchNativeSize = fa
             const card = (event.target as HTMLElement)?.closest?.(".ds-card") as HTMLElement | null;
             if (card) (globalThis as any).__ds_last_focused_card = card;
           }}
-          style={{ position: "relative", width: "100%", overflow: "visible", ["--ds-native-carousel-height" as string]: nativeCarouselResolution ? `${effectiveH + 82}px` : undefined }}
+          style={{ position: "relative", width: "100%", overflow: "visible", ["--ds-native-carousel-height" as string]: nativeCarouselResolution ? `${nativeCarouselViewportHeight}px` : undefined, ["--ds-mini-carousel-row-height" as string]: nativeCarouselResolution ? `${miniCarouselRowHeight}px` : undefined }}
         >
           {nativeCarouselResolution ? (
             <NativeShelfCarousel
@@ -781,7 +800,7 @@ function DeckRowImpl({ title, items, shelfId, removableSet, matchNativeSize = fa
               name={title ?? "Deck Shelves"}
               itemCount={items.length}
               itemHeight={effectiveH + 52}
-              viewportHeight={effectiveH + 82}
+              viewportHeight={nativeCarouselViewportHeight}
               itemMarginX={nativeCarouselResolution.itemMarginX}
               className={[nativeRowClass, "ds-native-carousel-root"].filter(Boolean).join(" ")}
               getItemWidth={(index) => nativeItemWidth(items[index], index)}

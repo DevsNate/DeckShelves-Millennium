@@ -3044,12 +3044,12 @@ async function fetchTabStoreIds(rawTab: string, filterToInstalledNative: (ids: n
 }
 
 async function resolveFromDynamicTab(ctx: ResolverContext, rawTab: string): Promise<number[]> {
-  const { all, sort, shelfId, sortReverse, limit } = ctx;
+  const { all, sort, shelfId, sortReverse } = ctx;
   const filtered = await resolveDynamicTab(rawTab, all);
   const tabApps = sortDynamicTabApps(filtered, rawTab, sort);
   let tabIds = deduplicateNonSteam(tabApps.map((a) => appIdOf(a)).filter(Number.isFinite), all);
   if (sort) tabIds = applySortToIds(tabIds, sort, all, shelfId, sortReverse);
-  return tabIds.slice(0, limit);
+  return tabIds;
 }
 
 async function _resolveTab(ctx: ResolverContext): Promise<number[]> {
@@ -3080,7 +3080,7 @@ async function _resolveTab(ctx: ResolverContext): Promise<number[]> {
     if (fallback) return fallback;
     logWarn("STEAM", "resolveShelfAppIds(tab) empty", { tab: rawTab, allCount: all.length });
   }
-  return finish(applyChildFilterTab(ids.slice(0, overShootLimit)));
+  return finish(applyChildFilterTab(ids).slice(0, overShootLimit));
 }
 
 // Built-in tabs whose semantics map cleanly to a legacy flat filter. When

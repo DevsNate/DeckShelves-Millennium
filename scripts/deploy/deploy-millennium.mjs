@@ -64,7 +64,11 @@ const payload = [
 console.log(`[millennium-deploy] target: ${target}`);
 console.log("[millennium-deploy] settings.json, settings.json.bak, and backups/ are outside the payload and will be preserved.");
 if (!noBuild && !dryRun) {
-  execFileSync(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["run", "build:millennium"], { cwd: root, stdio: "inherit" });
+  const command = process.platform === "win32" ? "cmd.exe" : "pnpm";
+  const commandArgs = process.platform === "win32"
+    ? ["/d", "/s", "/c", "pnpm run build:millennium"]
+    : ["run", "build:millennium"];
+  execFileSync(command, commandArgs, { cwd: root, stdio: "inherit" });
 }
 
 const missing = payload.filter(([source]) => !existsSync(source)).map(([source]) => source);

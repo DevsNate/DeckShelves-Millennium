@@ -89,6 +89,33 @@ describe('SettingsSchema keepShelvesStacked', () => {
   })
 })
 
+describe('SettingsSchema scaleMiniCarouselSpacing', () => {
+  it('is opt-in by default', () => {
+    expect(SettingsSchema.parse({}).scaleMiniCarouselSpacing).toBe(false)
+  })
+
+  it('preserves an enabled spacing compensation', () => {
+    expect(SettingsSchema.parse({ scaleMiniCarouselSpacing: true }).scaleMiniCarouselSpacing).toBe(true)
+  })
+})
+
+describe('SettingsSchema native shelf title options', () => {
+  it('keeps both title behaviors opt-in', () => {
+    const result = SettingsSchema.parse({})
+    expect(result.matchNativeShelfTitleOpacity).toBe(false)
+    expect(result.autoHideShelfTitles).toBe(false)
+  })
+
+  it('preserves enabled title behaviors', () => {
+    const result = SettingsSchema.parse({
+      matchNativeShelfTitleOpacity: true,
+      autoHideShelfTitles: true,
+    })
+    expect(result.matchNativeShelfTitleOpacity).toBe(true)
+    expect(result.autoHideShelfTitles).toBe(true)
+  })
+})
+
 describe('SettingsSchema with new templates', () => {
   it('accepts a shelf using the steam_cloud filterGroup shape', () => {
     const r = SettingsSchema.parse({

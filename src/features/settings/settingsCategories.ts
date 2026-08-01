@@ -22,6 +22,7 @@ export const SETTINGS_CATEGORIES: ReadonlyArray<SettingsCategory> = [
     "globalHideStatusLine", "globalHideNewBadge", "globalHideDiscountBadge", "globalHideCompatIcons",
     "globalHideNonSteamBadge", "globalHideShelfTitle", "globalHideGameNames", "globalHideInstallIndicator",
     "globalHideSeeMore", "globalHideRefreshCard", "globalDedupeByName", "globalHeroEnabled", "keepShelvesStacked",
+    "scaleMiniCarouselSpacing", "matchNativeShelfTitleOpacity", "autoHideShelfTitles",
     "fadeRecentsTitle",
     "globalEnableLogo", "globalEnableIcon", "globalEnableDescription", "globalDescriptionBelowLogo",
     "globalLogoPosition", "globalDescriptionPosition", "globalLogoSize", "globalLogoTopOffset",

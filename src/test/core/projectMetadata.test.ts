@@ -22,8 +22,8 @@ describe("project metadata", () => {
   it("uses an independent port version for Millennium", () => {
     (globalThis as any)[flag] = true;
     expect(getRuntimeHostKind()).toBe("millennium");
-    expect(getRuntimeVersion()).toBe("3.1.0");
-    expect(getRuntimeVersionLabel()).toBe("3.1.0 (upstream 3.1.0)");
+    expect(getRuntimeVersion()).toBe("3.2.0");
+    expect(getRuntimeVersionLabel()).toBe("3.2.0 (upstream 3.1.0)");
   });
 
   it("uses the configured Millennium repository for port links", () => {

@@ -101,12 +101,32 @@ export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
     #deck-shelves-home-root .ds-shelf:not([data-ds-info-above="true"]) .ds-native-carousel-root {
       height: calc(var(--ds-native-carousel-height) + 96px) !important;
     }
+    /* Optional Mini Carousel spacing compensation. Mini Carousel transforms
+       the borrowed grid without changing layout, leaving the original row
+       height around visibly smaller cards. Shrink only the outer layout row
+       by the detected scale and anchor the theme transform at the top so its
+       padding/label reserve scale proportionally instead of drifting down
+       from the default centre transform-origin. Above-card info owns a
+       separate height/margin contract and is intentionally excluded. */
+    #deck-shelves-home-root .deck-shelves-root[data-ds-scale-mini-carousel-spacing="true"] .ds-shelf:not([data-ds-info-above="true"]) .ds-row-scroll--native-carousel {
+      height: var(--ds-mini-carousel-row-height, var(--ds-native-carousel-height)) !important;
+    }
+    #deck-shelves-home-root .deck-shelves-root[data-ds-scale-mini-carousel-spacing="true"] .ds-shelf:not([data-ds-info-above="true"]) .ds-native-carousel-root {
+      transform-origin: top center !important;
+    }
     .ds-row-scroll { scrollbar-width: none; -ms-overflow-style: none; }
     .ds-row-scroll::-webkit-scrollbar { display: none; width: 0; height: 0; }
     [data-ds-recents-title-faded="true"] {
       opacity: 0 !important;
       transition: opacity 0.28s cubic-bezier(0.17, 0.45, 0.14, 0.83) !important;
       pointer-events: none !important;
+    }
+    [data-ds-native-title-auto-hide-disabled="true"] {
+      opacity: var(--ds-native-title-visible-opacity, 0.7) !important;
+      transform: translateY(0) !important;
+    }
+    [data-ds-native-title-auto-hide-disabled="true"][data-ds-recents-title-faded="true"] {
+      opacity: 0 !important;
     }
     /* Art Hero stacked-shelf compatibility -------------------------------
        Deck Shelves renders Steam's real card components, so Art Hero's
@@ -900,11 +920,33 @@ export function buildShelfStylesheet(ctx: ShelfStylesheetCtx): string {
       pointer-events: none;
       z-index: 21;
     }
-    .ds-shelf-title {
-      color: var(--ds-native-heading-color, inherit);
+    /* The title carries native shelf/header classes so CSS Loader themes can
+       match its typography. Their generic shelf-title color rules can be more
+       specific than the Deck Shelves title class, though, and may select a different
+       palette token than Recent Games (Catppuccini uses subtext0 vs text).
+       Keep typography themeable while making the live native color mirror the
+       authoritative color source. */
+    #deck-shelves-home-root .deck-shelves-root .ds-shelf-title {
+      color: var(--ds-native-heading-color, inherit) !important;
       font-size: 22px;
       font-weight: 700;
       letter-spacing: 0.5px;
+    }
+    .deck-shelves-root[data-ds-match-native-shelf-title-opacity="true"] .ds-shelf-title {
+      opacity: var(--ds-native-title-opacity, 0.7);
+    }
+    .ds-shelf-title[data-ds-title-auto-hide="true"] {
+      opacity: 0 !important;
+      transform: translateY(-1px);
+      transition: transform 500ms ease-in-out, opacity 500ms ease-in-out;
+    }
+    .ds-shelf-title[data-ds-title-auto-hide="true"][data-ds-title-visible="true"] {
+      opacity: 1 !important;
+      transform: translateY(0);
+    }
+    .deck-shelves-root[data-ds-match-native-shelf-title-opacity="true"]
+      .ds-shelf-title[data-ds-title-auto-hide="true"][data-ds-title-visible="true"] {
+      opacity: var(--ds-native-title-opacity, 0.7) !important;
     }
 
     .ds-shelf-collapse-icon {

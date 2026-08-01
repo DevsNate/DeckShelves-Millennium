@@ -93,18 +93,34 @@ test, and the live acceptance result together.
   available card-menu paths, then press Down. Focus must remain on that card.
   Disable Hide Home Tabs and confirm native tabs return to the navigation path.
 
-## MILL-MENU-001: preserve the safe smart-shelf mouse menu route
+## MILL-MENU-001: native-backed cards use one Steam-owned menu
 
-- Invariant: do not special-case mouse `contextmenu` on `.ds-card--native` to
-  pass directly into the borrowed Steam capsule merely to make it resemble the
-  controller menu.
-- Reason: that rejected routing made the problematic mouse menu behavior apply
-  to every shelf and did not fix the final-shelf navigation boundary.
-- Protected code: `src/components/home/navPatches/menuButton.ts` and
+- Invariant: mouse and controller menu events on `.ds-card--native` remain
+  owned by the already-mounted borrowed Steam capsule. Deck Shelves must not
+  instantiate a second native menu or replace it with the smaller fallback.
+- Invariant: mouse `contextmenu` never falls back to a previously focused card;
+  blank shelf, hero, and page space must not open any game menu.
+- Invariant: native Recent Games cards follow the same mouse ownership rule.
+  Resolve the card under the pointer from Steam's React owner data; never borrow
+  a controller-focused app for mouse hit detection.
+- Invariant: consume mouse `contextmenu` on Home gutter/hero/blank space without
+  opening a game menu, so Chromium's white browser/developer context menu cannot
+  appear as a second, unrelated menu.
+- Reason: Steam's mounted capsule owns the full application menu lifecycle and
+  safely supplies Favorites, collections, Manage, artwork, Properties, and
+  Deck Shelves actions. A separately instantiated captured menu lacks the
+  original native owner and can crash on dismissal. The Deck Shelves fallback
+  remains necessary only for cards without a native app-menu owner.
+- Protected code: `src/components/home/navPatches/menuButton.ts`,
+  `src/components/shelf/NativeGameCard.tsx`, and
   `src/core/steamGameMenu.ts`.
-- Live check: smart-shelf mouse right-click keeps its safe fallback behavior;
-  installed-shelf behavior remains unchanged; controller menu behavior remains
-  native; closing any menu does not break subsequent shelf navigation.
+- Automated evidence: `src/test/components/menuButton.test.ts`.
+- Live check: mouse right-click and the controller Menu button on the same
+  native-backed card open the same full Steam menu. Repeat on a native Recent
+  Games card and confirm the pointed game owns the menu. Right-clicking blank
+  space or a card gutter opens neither a game menu nor Chromium's browser menu.
+  Online/synthetic cards retain their safe Deck Shelves menu, and closing every
+  route preserves subsequent shelf navigation.
 
 ## Rejected fixes that must not return during conflict resolution
 
@@ -112,8 +128,10 @@ test, and the live acceptance result together.
 - Do not add global keyboard/controller modality state to drive carousel focus.
 - Do not update controlled focus through `fnOnFocusedColumnChange` mid-motion.
 - Do not remove native labels or other accepted visual work to solve navigation.
-- Do not route every native-card mouse context menu directly to the borrowed
-  capsule.
+- Do not open a game menu from a blank-space mouse `contextmenu` by borrowing
+  the previously focused card.
+- Do not instantiate a captured native menu outside its original Steam owner;
+  native-backed cards must use their already-mounted capsule.
 - Do not restore PowerShell `_popen()` capability probes on Windows.
 
 ## Upstream-update sign-off

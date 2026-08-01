@@ -47,6 +47,12 @@ this gate, not optional background reading.
   Steam navigation-tree replacement.
 - With Home Tabs hidden, Down on the final shelf keeps the current card focused,
   including after closing mouse and controller card menus.
+- Mouse right-click and the controller Menu button open the same full Steam
+  menu on native-backed cards; right-clicking blank shelf/hero/page space opens
+  no game menu.
+- Mouse right-click on a native Recent Games card opens that pointed card's
+  Steam-owned menu; right-clicking the gutter between cards opens no Chromium
+  browser/developer menu.
 - Disabling the option or unloading the plugin restores native tabs.
 - Plugin load and optional backend probes never flash a console or steal focus
   from Steam on Windows.

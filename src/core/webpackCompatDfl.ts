@@ -51,6 +51,8 @@ export function _discoverViaDFL(doc: Document): Record<string, string> {
       RecentGamesInnerContainer: 'nativeRecentsInner',
       RecentGamesHeader: 'nativeRecentsHeader',
       RecentGamesHeaderLabel: 'nativeRecentsHeaderLabel',
+      HeaderEnter: 'nativeRecentsHeaderEnter',
+      HeaderExit: 'nativeRecentsHeaderExit',
       RecentSection: 'nativeRecentsSection',
       RecentlyInteracted: 'nativeRecentlyInteracted',
       RecentlyPlayedFriends: 'nativeRecentlyPlayedFriends',

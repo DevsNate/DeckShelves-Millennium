@@ -32,6 +32,35 @@ export function isCssLoaderActive(): boolean {
   return getCssLoaderStyleNodes().length > 0;
 }
 
+/** Mini Carousel scales Steam's carousel with a unitless `--scale-value`.
+    Return that live value only when a Mini Carousel style block is active;
+    other themes may coincidentally define the same generic variable name. */
+function getMiniCarouselDocuments(): Document[] {
+  const docs = new Set<Document>();
+  for (const node of getCssLoaderStyleNodes()) {
+    const source = node.dataset?.cssLoaderSource || "";
+    if (/^Mini Carousel(?:\/|$)/i.test(source) && node.ownerDocument) docs.add(node.ownerDocument);
+  }
+  return Array.from(docs);
+}
+
+function readMiniCarouselScale(doc: Document): number | null {
+  try {
+    const view = doc.defaultView ?? window;
+    const raw = view.getComputedStyle(doc.documentElement).getPropertyValue("--scale-value").trim();
+    const parsed = Number.parseFloat(raw);
+    return Number.isFinite(parsed) && parsed >= 0.5 && parsed <= 1.5 ? parsed : null;
+  } catch { return null; }
+}
+
+export function getMiniCarouselScale(): number | null {
+  for (const doc of getMiniCarouselDocuments()) {
+    const scale = readMiniCarouselScale(doc);
+    if (scale !== null) return scale;
+  }
+  return null;
+}
+
 /** Number of CSS Loader style blocks injected across the Steam documents — a
     signal that something is active even when no DS-known theme matches. */
 export function cssLoaderStyleCount(): number {

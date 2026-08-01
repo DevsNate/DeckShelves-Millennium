@@ -3,6 +3,7 @@ import {
   ConfirmModal,
   Field,
   Focusable,
+  gamepadDialogClasses,
   ToggleField,
 } from '../runtime/host/decky'
 import { getMountFailed, getMountError, subscribeMountFailed } from '../runtime/homePatch'
@@ -209,7 +210,7 @@ function SidecarPanel({ controller, onCollapse }: { controller: SettingsControll
       onButtonDown={(evt: any) => absorbCancelButton(evt, onCollapse)}
       noFocusRing
     >
-      <div className='ds-sidecar-title'>
+      <div className={`ds-sidecar-title ${gamepadDialogClasses.FieldLabel}`}>
         <GearIcon size={16} style={{ marginRight: 8 }} />
         {controller.t('settings_title')}
       </div>
