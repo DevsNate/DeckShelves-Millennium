@@ -518,6 +518,12 @@ export const SettingsSchema = z.object({
   // Prevent Art Hero's viewport-height native carousel rules from turning
   // each Deck Shelves row into a separate page. Global by design.
   keepShelvesStacked: z.boolean().default(true),
+  // When Mini Carousel scales the borrowed native carousel, shrink the
+  // surrounding shelf row by the same factor so invisible label/paint space
+  // does not remain at the original size.
+  scaleMiniCarouselSpacing: z.boolean().default(false),
+  matchNativeShelfTitleOpacity: z.boolean().default(false),
+  autoHideShelfTitles: z.boolean().default(false),
   fadeRecentsTitle: z.boolean().optional(),
   globalMatchNativeSize: z.boolean().default(true),
   globalHighlightFirst: z.boolean().default(false),

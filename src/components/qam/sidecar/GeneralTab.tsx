@@ -307,7 +307,7 @@ function descriptionGroup(c: GCtx): ReactNode {
 }
 
 const GLOBAL_VISUAL_COUNT_KEYS = [
-  'globalMatchNativeSize', 'globalHighlightFirst', 'globalHighlightAll', 'globalHighlightRandom',
+  'globalMatchNativeSize', 'scaleMiniCarouselSpacing', 'matchNativeShelfTitleOpacity', 'autoHideShelfTitles', 'globalHighlightFirst', 'globalHighlightAll', 'globalHighlightRandom',
   'globalEnableLogo', 'globalEnableIcon', 'globalEnableDescription', 'globalDescriptionBelowLogo',
   'globalHeroEnabled', 'keepShelvesStacked', 'fadeRecentsTitle', 'globalGameInfoAbove', 'globalFriendsPlayingOverlay', 'globalFriendsPlayingOverlayRecent',
   'globalFullPageShelf', 'globalHideShelfTitle', 'globalHideGameNames', 'globalHideStatusLine',
@@ -333,6 +333,15 @@ function visualGlobalSection(c: GCtx): ReactNode {
     >
       {row('globalMatchNativeSize', (
         <ToggleField label={t('match_native_size')} checked={settings.globalMatchNativeSize === true} onChange={(v: boolean) => actions.setGlobalMatchNativeSize(v)} />
+      ))}
+      {row('scaleMiniCarouselSpacing', (
+        <ToggleField label={t('scale_mini_carousel_spacing' as any)} checked={settings.scaleMiniCarouselSpacing === true} onChange={(v: boolean) => actions.setScaleMiniCarouselSpacing(v)} />
+      ))}
+      {row('matchNativeShelfTitleOpacity', (
+        <ToggleField label={t('match_native_shelf_title_opacity' as any)} checked={settings.matchNativeShelfTitleOpacity === true} onChange={(v: boolean) => actions.setMatchNativeShelfTitleOpacity(v)} />
+      ))}
+      {row('autoHideShelfTitles', (
+        <ToggleField label={t('auto_hide_shelf_titles' as any)} checked={settings.autoHideShelfTitles === true} onChange={(v: boolean) => actions.setAutoHideShelfTitles(v)} />
       ))}
       {row('globalHighlightFirst', (
         <ToggleField label={t('highlight_first')} checked={settings.globalHighlightFirst === true} onChange={(v: boolean) => actions.setGlobalHighlightFirst(v)} />

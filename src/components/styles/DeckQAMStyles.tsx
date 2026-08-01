@@ -31,9 +31,12 @@ export function DeckQAMStyles() {
         --ds-surface-row:    rgba(255, 255, 255, 0.03);
         --ds-border:         rgba(255, 255, 255, 0.06);
         --ds-border-strong:  rgba(255, 255, 255, 0.10);
-        --ds-text:           #fff;
-        --ds-text-dim:       rgba(255, 255, 255, 0.65);
-        --ds-text-faint:     rgba(255, 255, 255, 0.45);
+        /* Follow the host foreground instead of freezing text to white.
+           Catppuccin publishes matching text/subtext tokens; native
+           FieldLabel classes are also applied to our custom labels. */
+        --ds-text:           var(--ctp-text, currentColor);
+        --ds-text-dim:       var(--ctp-subtext1, color-mix(in srgb, currentColor 65%, transparent));
+        --ds-text-faint:     var(--ctp-subtext0, color-mix(in srgb, currentColor 45%, transparent));
         --ds-accent:         var(--gpSystemLighterStill, rgba(120, 180, 255, 0.85));
         --ds-accent-soft:    rgba(120, 180, 255, 0.18);
         --ds-danger:         rgba(255, 110, 110, 0.95);
@@ -110,6 +113,11 @@ export function DeckQAMStyles() {
       .deck-shelves-qam-scope .${gamepadDialogClasses.FieldLabel} {
         margin-left: 16px;
       }
+      .deck-shelves-qam-scope .ds-collapsible-title.${gamepadDialogClasses.FieldLabel},
+      .deck-shelves-qam-scope .ds-sidecar-title.${gamepadDialogClasses.FieldLabel},
+      .deck-shelves-qam-scope .deck-shelves-empty.${gamepadDialogClasses.FieldLabel} {
+        margin-left: 0;
+      }
 
       .deck-shelves-qam-scope .add-shelf-btn .${gamepadDialogClasses.Field}.${gamepadDialogClasses.WithBottomSeparatorStandard}::after,
       .deck-shelves-qam-scope .deck-shelves-action-btn .${gamepadDialogClasses.Field}.${gamepadDialogClasses.WithBottomSeparatorStandard}::after {
@@ -162,7 +170,7 @@ export function DeckQAMStyles() {
         animation: ds-sidenav-bump 200ms cubic-bezier(0.2, 0.85, 0.3, 1.2) forwards;
       }
       .ds-sidenav-row--focused span {
-        color: white !important;
+        color: currentColor !important;
         font-weight: 700 !important;
         text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
       }
@@ -182,7 +190,7 @@ export function DeckQAMStyles() {
         background: transparent;
         border: none;
         outline: none;
-        color: white;
+        color: currentColor;
         font-size: inherit;
         font-weight: 600;
         text-align: center;
@@ -205,7 +213,7 @@ export function DeckQAMStyles() {
         font-size: 12px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
-        color: var(--ds-text-dim, #b8bcbf);
+        color: var(--ds-text-dim, currentColor);
         padding: 8px 16px 6px;
       }
 
@@ -272,7 +280,7 @@ export function DeckQAMStyles() {
 
       .deck-shelves-qam-scope .deck-shelves-empty {
         padding: 10px 16px;
-        color: #8b929a;
+        color: var(--ds-text-dim, currentColor);
         font-size: 14px;
       }
 
@@ -304,7 +312,7 @@ export function DeckQAMStyles() {
         font-size: 12px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
-        color: var(--ds-text-dim, #b8bcbf);
+        color: var(--ds-text-dim, currentColor);
         user-select: none;
         width: 100%;
         box-sizing: border-box;
@@ -321,7 +329,7 @@ export function DeckQAMStyles() {
         font-size: 10px;
         font-weight: 700;
         margin-right: 4px;
-        color: #fff;
+        color: var(--ds-text, currentColor);
       }
       /* The box border/background only exist in the settings page; the QAM
          keeps the flat look (header + content, no surrounding box). Inter-box
@@ -420,11 +428,11 @@ export function DeckQAMStyles() {
       .ds-settings-section__title {
         font-weight: 600;
         font-size: 14px;
-        color: var(--ds-text, #fff);
+        color: var(--ds-text, currentColor);
       }
       .ds-settings-section__desc {
         font-size: 12px;
-        color: var(--ds-text-dim, rgba(255, 255, 255, 0.65));
+        color: var(--ds-text-dim, currentColor);
         margin-top: 4px;
         line-height: 1.35;
       }
@@ -494,7 +502,7 @@ export function DeckQAMStyles() {
         letter-spacing: 0.5px;
         border-radius: 999px;
         background: var(--ds-surface-hi, rgba(255, 255, 255, 0.10));
-        color: var(--ds-text, #fff);
+        color: var(--ds-text, currentColor);
       }
       .ds-chip--accent {
         background: var(--ds-accent-soft, rgba(120, 180, 255, 0.18));
@@ -513,7 +521,7 @@ export function DeckQAMStyles() {
       .ds-settings-section__title {
         font-weight: 600;
         font-size: 14px;
-        color: #fff;
+        color: var(--ds-text, currentColor);
       }
       .ds-settings-section__desc {
         font-size: 12px;
@@ -548,7 +556,7 @@ export function DeckQAMStyles() {
         padding: 4px 10px;
         border-radius: 6px;
         background: rgba(255, 255, 255, 0.06);
-        color: #d6d9dc;
+        color: var(--ds-text, currentColor);
         font-size: 11px;
         font-weight: 600;
         text-transform: uppercase;
@@ -598,7 +606,7 @@ export function DeckQAMStyles() {
         padding: 4px 16px;
         font-weight: 700;
         font-size: 18px;
-        color: #ffffff;
+        color: var(--ds-text, currentColor);
         letter-spacing: 0.3px;
         background: transparent;
         border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -616,7 +624,7 @@ export function DeckQAMStyles() {
         box-sizing: border-box;
       }
       .deck-shelves-qam-sidecar-placeholder {
-        color: #8b929a;
+        color: var(--ds-text-dim, currentColor);
         font-size: 13px;
         text-align: center;
         margin-top: 40%;
@@ -665,7 +673,7 @@ export function DeckQAMStyles() {
         flex: 0 0 auto;
         border-radius: 6px;
         background: rgba(255, 255, 255, 0.04);
-        color: var(--ds-text-dim, #b8bcbf);
+        color: var(--ds-text-dim, currentColor);
         cursor: pointer;
         user-select: none;
       }
@@ -673,7 +681,7 @@ export function DeckQAMStyles() {
       .ds-eye-btn:focus,
       .ds-eye-btn:focus-within {
         background: rgba(255, 255, 255, 0.20);
-        color: #ffffff;
+        color: var(--ds-text, currentColor);
         outline: 2px solid rgba(255, 255, 255, 0.45);
         outline-offset: -2px;
       }

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { annotateNativeCard, resolveNativeCapsuleFromElement, shouldShowNativeCardAsHovered } from "../../components/shelf/NativeGameCard";
-import { installNativeTitleInteractionOwner, setNativeTitlePointerOwner } from "../../core/nativeTitleInteractionOwner";
+import { installNativeTitleInteractionOwner, setNativeTitlePointerOwner, syncSteamNativeCarouselControllerMode } from "../../core/nativeTitleInteractionOwner";
 
 describe("native capsule discovery", () => {
   it("forces native hover only for Steam's own gamepad focus", () => {
@@ -84,6 +84,47 @@ describe("native capsule discovery", () => {
 
     uninstall();
     expect(cards[0].dataset.dsHoverSuppressNativeLabel).toBeUndefined();
+    root.remove();
+  });
+
+  it("syncs Steam's missed controller-mode state after native focus is restored", () => {
+    const root = document.createElement("div");
+    root.id = "deck-shelves-home-root";
+    const grid = document.createElement("div");
+    grid.className = "ReactVirtualized__Grid__innerScrollContainer";
+    const featured = document.createElement("div");
+    featured.setAttribute("role", "link");
+    featured.className = "native-card shared-default";
+    const focused = document.createElement("div");
+    focused.setAttribute("role", "link");
+    focused.className = "native-card shared-default gpfocus";
+    const modeUpdates: boolean[] = [];
+    const carouselOwner = {
+      memoizedProps: { games: [1, 2], showFeaturedItem: true },
+      memoizedState: {
+        memoizedState: false,
+        queue: { dispatch: (enabled: boolean) => modeUpdates.push(enabled) },
+        next: null,
+      },
+      return: null,
+    };
+    (featured as any).__reactFiber$test = {
+      memoizedProps: { appid: 1, showAsHovered: true },
+      return: carouselOwner,
+    };
+    (focused as any).__reactFiber$test = {
+      memoizedProps: { appid: 2, showAsHovered: false },
+      return: carouselOwner,
+    };
+    grid.append(featured, focused);
+    document.body.append(grid, root);
+
+    expect(syncSteamNativeCarouselControllerMode(root)).toBe(1);
+    expect(modeUpdates).toEqual([true]);
+    expect(featured.classList.contains("native-card")).toBe(true);
+    expect(focused.classList.contains("gpfocus")).toBe(true);
+
+    grid.remove();
     root.remove();
   });
 

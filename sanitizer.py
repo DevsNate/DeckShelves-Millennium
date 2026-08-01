@@ -53,6 +53,9 @@ def _sanitize_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     clean["globalMatchNativeSize"] = bool(settings.get("globalMatchNativeSize", True))
     clean["fadeRecentsTitle"] = bool(settings.get("fadeRecentsTitle", False))
     clean["keepShelvesStacked"] = bool(settings.get("keepShelvesStacked", True))
+    clean["scaleMiniCarouselSpacing"] = bool(settings.get("scaleMiniCarouselSpacing", False))
+    clean["matchNativeShelfTitleOpacity"] = bool(settings.get("matchNativeShelfTitleOpacity", False))
+    clean["autoHideShelfTitles"] = bool(settings.get("autoHideShelfTitles", False))
     return clean
 
 

@@ -2,6 +2,7 @@ import { useRef, type ReactNode } from 'react'
 import { ReorderableList, type ReorderableEntry } from '../../ui/ReorderableList'
 import { ShelfListLabel } from './ShelfListLabel'
 import { useContainerDragReorder } from '../../../core/reorder'
+import { gamepadDialogClasses } from '../../../runtime/host/decky'
 
 type EntryData = { id: string }
 
@@ -58,7 +59,7 @@ export function ReorderableShelfList<T extends { id: string; title?: string; hid
           onSave={(next: ReorderableEntry<EntryData>[]) => onReorder(next.map((e) => e.data!.id))}
         />
       ) : (
-        <div className='deck-shelves-empty'>{emptyText}</div>
+        <div className={`deck-shelves-empty ${gamepadDialogClasses.FieldLabel}`}>{emptyText}</div>
       )}
     </div>
   )

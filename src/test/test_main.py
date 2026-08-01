@@ -908,6 +908,23 @@ def test_sanitize_settings_keep_shelves_stacked_preserves_opt_out():
     assert result["keepShelvesStacked"] is False
 
 
+def test_sanitize_settings_scale_mini_carousel_spacing_is_opt_in():
+    assert _sanitize_settings({})["scaleMiniCarouselSpacing"] is False
+    assert _sanitize_settings({"scaleMiniCarouselSpacing": True})["scaleMiniCarouselSpacing"] is True
+
+
+def test_sanitize_settings_native_shelf_title_options_are_opt_in():
+    defaults = _sanitize_settings({})
+    assert defaults["matchNativeShelfTitleOpacity"] is False
+    assert defaults["autoHideShelfTitles"] is False
+    enabled = _sanitize_settings({
+        "matchNativeShelfTitleOpacity": True,
+        "autoHideShelfTitles": True,
+    })
+    assert enabled["matchNativeShelfTitleOpacity"] is True
+    assert enabled["autoHideShelfTitles"] is True
+
+
 def test_sanitize_new_home_visual_options_round_trip():
     result = _sanitize_settings({"fadeRecentsTitle": True})
     assert result.get("fadeRecentsTitle") is True

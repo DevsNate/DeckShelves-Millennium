@@ -17,6 +17,7 @@ import { TRIGGER_CATALOG } from "../domain/triggerCatalog";
 import { SHELF_TEMPLATES, ONLINE_SHELF_TEMPLATES } from "../domain/templates";
 import { DEFAULT_BINDINGS } from "../runtime/buttonBindings";
 import { getRuntimeVersion } from "./projectMetadata";
+import { projectSettingsSnapshot } from "./settingsSnapshot";
 import type {
   Unsubscribe as ApiUnsubscribe,
   PublicAppMeta as ApiPublicAppMeta,
@@ -778,28 +779,6 @@ function projectProfiles(s: Settings | null): ReadonlyArray<PublicProfile> {
     createdAt: String(p.createdAt ?? ""),
     active: typeof activeName === "string" && activeName === p.name,
   }));
-}
-
-function projectSettingsSnapshot(s: Settings | null): PublicSettingsSnapshot {
-  const x = (s ?? {}) as any;
-  return {
-    enabled: x.enabled === true,
-    hideRecents: x.hideRecents === true,
-    recentsReplaceSource: x.recentsReplaceSource === true,
-    hideHomeTabs: x.hideHomeTabs === true,
-    shelfHeroBackground: x.shelfHeroBackground === true,
-    globalHeroEnabled: x.globalHeroEnabled === true,
-    globalFullPageShelf: x.globalFullPageShelf === true,
-    smartShelvesEnabled: x.smartShelvesEnabled === true,
-    unifiedListEnabled: x.unifiedListEnabled === true,
-    forceCssLoaderThemes: x.forceCssLoaderThemes === true,
-    lightModeEnabled: x.lightModeEnabled === true,
-    onlineFeaturesEnabled: x.onlineFeaturesEnabled === true,
-    updateNotifyEnabled: x.updateNotifyEnabled !== false,
-    integrationsEnabled: (x.integrationsEnabled ?? {}) as Record<string, boolean>,
-    featureToggles: (x.featureToggles ?? {}) as Record<string, boolean>,
-    activeProfileName: typeof x.activeProfileName === "string" ? x.activeProfileName : null,
-  };
 }
 
 function detectLocale(): string {

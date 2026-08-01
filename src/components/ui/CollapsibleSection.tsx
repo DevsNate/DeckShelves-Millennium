@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Focusable } from '../../runtime/host/decky'
+import { Focusable, gamepadDialogClasses } from '../../runtime/host/decky'
 
 const SECTIONS_KEY = 'ds-qam-sections'
 
@@ -50,7 +50,7 @@ export function CollapsibleSection({
           next section. */}
       <Focusable className='ds-collapsible-row' flow-children='vertical' noFocusRing focusWithinClassName='gpfocuswithin' style={{ display: 'flex', alignItems: 'center' }}>
         <Focusable className='ds-collapsible-header' data-ds-section={id} onClick={toggle} onOKButton={toggle} noFocusRing style={{ flex: 1, minWidth: 0 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span className={`ds-collapsible-title ${gamepadDialogClasses.FieldLabel}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {icon}
             {title}
           </span>

@@ -60,6 +60,25 @@ describe('native card layout CSS', () => {
     expect(css).not.toContain('data-ds-ignore-art-hero');
   });
 
+  it('scales only normal native-carousel row spacing with Mini Carousel', () => {
+    expect(css).toContain('data-ds-scale-mini-carousel-spacing="true"');
+    expect(css).toContain('height: var(--ds-mini-carousel-row-height, var(--ds-native-carousel-height)) !important');
+    expect(css).toContain('transform-origin: top center !important');
+    expect(css).toContain('.ds-shelf:not([data-ds-info-above="true"])');
+  });
+
+  it('matches native title opacity independently from native auto-hide timing', () => {
+    expect(css).toContain('data-ds-match-native-shelf-title-opacity="true"');
+    expect(css).toContain('opacity: var(--ds-native-title-opacity, 0.7)');
+    expect(css).toContain('data-ds-title-auto-hide="true"');
+    expect(css).toContain('data-ds-title-visible="true"');
+    expect(css).toContain('opacity: 0 !important');
+    expect(css).toContain('opacity: 1 !important');
+    expect(css).toContain('opacity: var(--ds-native-title-opacity, 0.7) !important');
+    expect(css).toContain('transform: translateY(-1px)');
+    expect(css).toContain('transition: transform 500ms ease-in-out, opacity 500ms ease-in-out');
+  });
+
   it('does not override CSS Loader artwork framing for full-screen heroes', () => {
     expect(css).not.toContain('.ds-shelf[data-ds-full-screen-hero="true"] .ds-per-shelf-hero-img');
     expect(css).toContain('object-position: var(--ds-hero-position, 50% 18%)');
@@ -69,6 +88,12 @@ describe('native card layout CSS', () => {
     expect(css).toContain('[data-ds-recents-title-faded="true"]');
     expect(css).toContain('opacity: 0 !important');
     expect(css).not.toContain('[data-ds-recents-title-faded="true"] {\n      display: none');
+  });
+
+  it('keeps the native Recent Games title visible when shared auto-hide is off', () => {
+    expect(css).toContain('[data-ds-native-title-auto-hide-disabled="true"]');
+    expect(css).toContain('opacity: var(--ds-native-title-visible-opacity, 0.7) !important');
+    expect(css).toContain('transform: translateY(0) !important');
   });
 
   it('moves custom labels only after the above-row copy is ready', () => {

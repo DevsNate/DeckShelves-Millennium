@@ -48,7 +48,7 @@ replace `settings.json`, `settings.json.bak`, or `backups/`.
 
 ## Install a release
 
-Download `Deck Shelves v3.1.0.zip` from the
+Download `Deck Shelves v3.1.1.zip` from the
 [GitHub releases page](https://github.com/DevsNate/DeckShelves-Millennium/releases),
 extract its `deck-shelves` directory into Millennium's plugins directory, then
 enable the plugin and reload Steam.

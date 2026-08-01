@@ -24,11 +24,12 @@ import { subscribeSessionState } from "../runtime/sessionState";
 import { subscribePerfState, stopFrameSampler } from "../runtime/perfState";
 import { subscribePeripheralsState } from "../runtime/peripheralsState";
 import { flowChildrenProps, isMillenniumNavigationRuntime } from "../core/steamOSVersion";
-import { isCssLoaderActive, getNativeRecentsClassName, isArtHeroActive, isNoHeroGradientActive, isHeroFullscreenActive, isNoHomeTextActive, isFocusRoundCompatActive, isTiltedHomeActive, getTiltedHomeMode } from "../core/cssLoaderDetect";
+import { isCssLoaderActive, getMiniCarouselScale, getNativeRecentsClassName, isArtHeroActive, isNoHeroGradientActive, isHeroFullscreenActive, isNoHomeTextActive, isFocusRoundCompatActive, isTiltedHomeActive, getTiltedHomeMode } from "../core/cssLoaderDetect";
 import { BadgeFocusOverlay } from "./shelf/BadgeFocusOverlay";
 import { FriendsAvatarOverlay } from "./shelf/FriendsAvatarOverlay";
-import { installRecentsTitleFade } from "../core/recentsTitleFade";
-import { installNativeTitleInteractionOwner } from "../core/nativeTitleInteractionOwner";
+import { installNativeTitleAutoHideOverride, installNativeTitleColorMirror, installNativeTitleOpacityMirror, installRecentsTitleFade } from "../core/recentsTitleFade";
+import { installNativeTitleInteractionOwner, installSteamNativeTitleInputOwner } from "../core/nativeTitleInteractionOwner";
+import { isOwnedShelfRenderChild, shouldRenderHomeShelves } from "./home/renderState";
 
 const homePlatform = createDeckyPlatform();
 
@@ -79,6 +80,11 @@ export function HomeShelves() {
   useEffect(() => {
     if (!mountEl) return;
     return installNativeTitleInteractionOwner(mountEl);
+  }, [mountEl]);
+
+  useEffect(() => {
+    if (!mountEl) return;
+    return installSteamNativeTitleInputOwner(mountEl);
   }, [mountEl]);
 
   /* Apply hideRecents — only actually hide when the plugin is enabled and has
@@ -331,7 +337,7 @@ export function HomeShelves() {
   // When the plugin is disabled, there are no visible shelves, or all shelves
   // are hidden — always ensure recents are visible regardless of the toggle
   // value (we never force-change the setting, just override the DOM state).
-  if (!settings.enabled || !visibleShelves.length) {
+  if (!shouldRenderHomeShelves(settings.enabled, shelves)) {
     applyHideRecents(false);
     if (!settings.enabled) logWarn("HOME", "plugin disabled — recents forced visible");
     return inlineHost();
@@ -376,6 +382,10 @@ function computeAutoCollapse(shelf: any, enabled: boolean): { forceCollapsed: bo
 
 function ShelvesContainer({ mountEl, shelves, globalMatchNativeSize = false, globalHighlightFirst = false, globalHighlightAll = false, globalHighlightRandom = false, globalHideStatusLine = false, globalHideNewBadge = false, globalHideDiscountBadge = false, globalHideCompatIcons = false, globalHideNonSteamBadge = false, globalHideShelfTitle = false, globalHideGameNames = false, globalHideInstallIndicator = false, globalHideSeeMore = false, globalHideRefreshCard = false, globalDedupeByName = false, globalHeroEnabled = false, globalGameInfoAbove = false, globalFriendsPlayingOverlay = false, globalFriendsPlayingOverlayRecent = false, globalEnableLogo = false, globalEnableIcon = false, globalEnableDescription = false, globalDescriptionBelowLogo = false, globalLogoBelowShelf = false, globalLogoPosition = 'left', globalDescriptionPosition = 'left', globalLogoSize = 100, globalLogoTopOffset = 20, globalFullPageShelf = false, keepShelvesStacked = true, globalIconVerticalAlign, globalShelfTitlePosition, globalGameNamePosition, globalPlaytimePosition, globalDescriptionHeight, shelfHeroBackground = false, perShelfHeroAllowed = false, hideRecentsSetting = false, forceCssLoaderThemes = false, fadeRecentsTitle = false, interleaveSmart = false }: { mountEl: HTMLElement; shelves: any[]; globalMatchNativeSize?: boolean; globalHighlightFirst?: boolean; globalHighlightAll?: boolean; globalHighlightRandom?: boolean; globalHideStatusLine?: boolean; globalHideNewBadge?: boolean; globalHideDiscountBadge?: boolean; globalHideCompatIcons?: boolean; globalHideNonSteamBadge?: boolean; globalHideShelfTitle?: boolean; globalHideGameNames?: boolean; globalHideInstallIndicator?: boolean; globalHideSeeMore?: boolean; globalHideRefreshCard?: boolean; globalDedupeByName?: boolean; globalHeroEnabled?: boolean; globalGameInfoAbove?: boolean; globalFriendsPlayingOverlay?: boolean; globalFriendsPlayingOverlayRecent?: boolean; globalEnableLogo?: boolean; globalEnableIcon?: boolean; globalEnableDescription?: boolean; globalDescriptionBelowLogo?: boolean; globalLogoBelowShelf?: boolean; globalLogoPosition?: 'left' | 'center' | 'right'; globalDescriptionPosition?: 'left' | 'center' | 'right'; globalLogoSize?: number; globalLogoTopOffset?: number; globalFullPageShelf?: boolean; keepShelvesStacked?: boolean; globalIconVerticalAlign?: 'top' | 'center' | 'bottom' | null; globalShelfTitlePosition?: 'left' | 'center' | 'right' | null; globalGameNamePosition?: 'left' | 'center' | 'right' | null; globalPlaytimePosition?: 'left' | 'center' | 'right' | null; globalDescriptionHeight?: number | null; shelfHeroBackground?: boolean; perShelfHeroAllowed?: boolean; hideRecentsSetting?: boolean; forceCssLoaderThemes?: boolean; fadeRecentsTitle?: boolean; interleaveSmart?: boolean }) {
   const autoCollapseEnabled = getCurrentSettings()?.autoCollapseEnabled === true;
+  const scaleMiniCarouselSpacing = getCurrentSettings()?.scaleMiniCarouselSpacing === true;
+  const matchNativeShelfTitleOpacity = getCurrentSettings()?.matchNativeShelfTitleOpacity === true;
+  const autoHideShelfTitles = getCurrentSettings()?.autoHideShelfTitles === true;
+  const [miniCarouselSpacingScale, setMiniCarouselSpacingScale] = useState(1);
   useEffect(() => {
     try { patchMenuButton(); } catch (e) { logInfo("HOME", "patchMenuButton failed", String(e)); }
     try { installPassiveMenuHook(); } catch (e) { logInfo("HOME", "installPassiveMenuHook failed", String(e)); }
@@ -429,6 +439,24 @@ function ShelvesContainer({ mountEl, shelves, globalMatchNativeSize = false, glo
 
 
   const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    return installNativeTitleColorMirror(mountEl, root);
+  }, [mountEl]);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!matchNativeShelfTitleOpacity || !root) return;
+    return installNativeTitleOpacityMirror(mountEl, root);
+  }, [matchNativeShelfTitleOpacity, mountEl]);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (autoHideShelfTitles || !root) return;
+    return installNativeTitleAutoHideOverride(mountEl, root);
+  }, [autoHideShelfTitles, mountEl]);
 
   // First rendered .ds-shelf id (tracked by MO since shelves[0] may
   // render null). Only normal shelves get the recents-slot promotion;
@@ -543,6 +571,12 @@ function ShelvesContainer({ mountEl, shelves, globalMatchNativeSize = false, glo
     const apply = () => {
       try {
         const artHeroActive = isArtHeroActive();
+        const detectedMiniScale = scaleMiniCarouselSpacing ? getMiniCarouselScale() : null;
+        const nextMiniScale = detectedMiniScale ?? 1;
+        setMiniCarouselSpacingScale((current) =>
+          Math.abs(current - nextMiniScale) < 0.001 ? current : nextMiniScale
+        );
+        setFlag('data-ds-scale-mini-carousel-spacing', detectedMiniScale != null);
         setFlag('data-ds-art-hero-active', artHeroActive);
         setFlag('data-ds-keep-shelves-stacked', keepShelvesStacked);
         setFlag('data-ds-hero-label', false);
@@ -620,6 +654,7 @@ function ShelvesContainer({ mountEl, shelves, globalMatchNativeSize = false, glo
       try {
         root.removeAttribute('data-ds-hero-label');
         root.removeAttribute('data-ds-art-hero-active');
+        root.removeAttribute('data-ds-scale-mini-carousel-spacing');
         root.removeAttribute('data-ds-keep-shelves-stacked');
         root.removeAttribute('data-ds-theme-no-hero-gradient');
         root.removeAttribute('data-ds-theme-hero-fullscreen');
@@ -631,7 +666,7 @@ function ShelvesContainer({ mountEl, shelves, globalMatchNativeSize = false, glo
       } catch {}
       setHtmlFlag('data-ds-theme-focus-round-compat', false);
     };
-  }, [mountEl, forceCssLoaderThemes, hideRecentsSetting, shelfHeroBackground, globalHeroEnabled, keepShelvesStacked]);
+  }, [mountEl, forceCssLoaderThemes, hideRecentsSetting, shelfHeroBackground, globalHeroEnabled, keepShelvesStacked, scaleMiniCarouselSpacing]);
 
   /* Drag-to-reorder shelves by holding the title (touch/mouse only; D-pad nav
      stays untouched). The hook scopes to `.ds-shelf[data-shelfid]` under the
@@ -687,7 +722,10 @@ function ShelvesContainer({ mountEl, shelves, globalMatchNativeSize = false, glo
     const hideForeign = () => {
       for (const child of Array.from(root.children)) {
         if (!(child instanceof HTMLElement)) continue;
-        if (child.classList.contains('ds-shelf')) continue;
+        // ShelfView temporarily renders a loading node, and wraps the row
+        // during a manual refresh. Both are plugin-owned and must never be
+        // mistaken for Steam's foreign empty-state / hint nodes.
+        if (isOwnedShelfRenderChild(child)) continue;
         if (child.getAttribute('data-ds-foreign') === 'true') continue;
         child.setAttribute('data-ds-foreign', 'true');
         child.style.display = 'none';
@@ -712,11 +750,12 @@ function ShelvesContainer({ mountEl, shelves, globalMatchNativeSize = false, glo
       ref={rootRef}
       className="deck-shelves-root"
       {...rootNavigationProps}
+      data-ds-match-native-shelf-title-opacity={matchNativeShelfTitleOpacity ? "true" : undefined}
       style={{ width: "100%", display: "flex", flexDirection: "column", paddingBottom: 8, marginBottom: 24, position: "relative" }}
     >
       {orderedShelves.map((shelf: any) => {
         const ac = computeAutoCollapse(shelf, autoCollapseEnabled);
-        return <ShelfView key={shelf.id} shelf={shelf} forceCollapsed={ac.forceCollapsed} autoCollapseWhenEmpty={ac.autoCollapseWhenEmpty} globalMatchNativeSize={globalMatchNativeSize} globalHighlightFirst={globalHighlightFirst} globalHighlightAll={globalHighlightAll} globalHighlightRandom={globalHighlightRandom} globalHideStatusLine={globalHideStatusLine} globalHideNewBadge={globalHideNewBadge} globalHideDiscountBadge={globalHideDiscountBadge} globalHideCompatIcons={globalHideCompatIcons} globalHideNonSteamBadge={globalHideNonSteamBadge} globalHideShelfTitle={globalHideShelfTitle} globalHideGameNames={globalHideGameNames} globalHideInstallIndicator={globalHideInstallIndicator} globalHideSeeMore={globalHideSeeMore} globalHideRefreshCard={globalHideRefreshCard} globalDedupeByName={globalDedupeByName} globalHeroEnabled={globalHeroEnabled} globalGameInfoAbove={globalGameInfoAbove} globalFriendsPlayingOverlay={globalFriendsPlayingOverlay} globalFriendsPlayingOverlayRecent={globalFriendsPlayingOverlayRecent} globalEnableLogo={globalEnableLogo} globalEnableIcon={globalEnableIcon} globalEnableDescription={globalEnableDescription} globalDescriptionBelowLogo={globalDescriptionBelowLogo} globalLogoBelowShelf={globalLogoBelowShelf} globalLogoPosition={globalLogoPosition} globalDescriptionPosition={globalDescriptionPosition} globalLogoSize={globalLogoSize} globalLogoTopOffset={globalLogoTopOffset} globalFullPageShelf={globalFullPageShelf} globalIconVerticalAlign={globalIconVerticalAlign} globalShelfTitlePosition={globalShelfTitlePosition} globalGameNamePosition={globalGameNamePosition} globalPlaytimePosition={globalPlaytimePosition} globalDescriptionHeight={globalDescriptionHeight} heroForced={perShelfHeroAllowed && shelfHeroBackground && shelf.id === firstVisibleId} heroLabelMount={perShelfHeroAllowed && (forceCssLoaderThemes || (hideRecentsSetting && shelf.id === firstVisibleId))} forceExpanded={hideRecentsSetting && shelf.id === firstVisibleId} forceLayoutAsRecents={forceCssLoaderThemes && !(hideRecentsSetting && shelf.id === firstVisibleId)} />;
+        return <ShelfView key={shelf.id} shelf={shelf} miniCarouselSpacingScale={miniCarouselSpacingScale} autoHideShelfTitles={autoHideShelfTitles} forceCollapsed={ac.forceCollapsed} autoCollapseWhenEmpty={ac.autoCollapseWhenEmpty} globalMatchNativeSize={globalMatchNativeSize} globalHighlightFirst={globalHighlightFirst} globalHighlightAll={globalHighlightAll} globalHighlightRandom={globalHighlightRandom} globalHideStatusLine={globalHideStatusLine} globalHideNewBadge={globalHideNewBadge} globalHideDiscountBadge={globalHideDiscountBadge} globalHideCompatIcons={globalHideCompatIcons} globalHideNonSteamBadge={globalHideNonSteamBadge} globalHideShelfTitle={globalHideShelfTitle} globalHideGameNames={globalHideGameNames} globalHideInstallIndicator={globalHideInstallIndicator} globalHideSeeMore={globalHideSeeMore} globalHideRefreshCard={globalHideRefreshCard} globalDedupeByName={globalDedupeByName} globalHeroEnabled={globalHeroEnabled} globalGameInfoAbove={globalGameInfoAbove} globalFriendsPlayingOverlay={globalFriendsPlayingOverlay} globalFriendsPlayingOverlayRecent={globalFriendsPlayingOverlayRecent} globalEnableLogo={globalEnableLogo} globalEnableIcon={globalEnableIcon} globalEnableDescription={globalEnableDescription} globalDescriptionBelowLogo={globalDescriptionBelowLogo} globalLogoBelowShelf={globalLogoBelowShelf} globalLogoPosition={globalLogoPosition} globalDescriptionPosition={globalDescriptionPosition} globalLogoSize={globalLogoSize} globalLogoTopOffset={globalLogoTopOffset} globalFullPageShelf={globalFullPageShelf} globalIconVerticalAlign={globalIconVerticalAlign} globalShelfTitlePosition={globalShelfTitlePosition} globalGameNamePosition={globalGameNamePosition} globalPlaytimePosition={globalPlaytimePosition} globalDescriptionHeight={globalDescriptionHeight} heroForced={perShelfHeroAllowed && shelfHeroBackground && shelf.id === firstVisibleId} heroLabelMount={perShelfHeroAllowed && (forceCssLoaderThemes || (hideRecentsSetting && shelf.id === firstVisibleId))} forceExpanded={hideRecentsSetting && shelf.id === firstVisibleId} forceLayoutAsRecents={forceCssLoaderThemes && !(hideRecentsSetting && shelf.id === firstVisibleId)} />;
       })}
       <BadgeFocusOverlay />
       <FriendsAvatarOverlay />

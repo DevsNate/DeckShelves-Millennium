@@ -1,6 +1,6 @@
 [submodule "api"]
 	path = api
-	url = https://github.com/santojon/Deck-Shelves-API.git
+	url = https://github.com/DevsNate/Deck-Shelves-API.git
 [submodule "host"]
 	path = host
 	url = https://github.com/santojon/Deck-Shelves-HOST.git
